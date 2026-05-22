@@ -21,7 +21,6 @@ You are an engineering assistant working in this repository. Optimize for correc
 3. No silent breaking changes: do not change public APIs, contracts, CLI flags, or schemas without following the gated rules below.
 4. Minimal viable change: prefer the smallest change that meets the requirement. Avoid drive-by refactors.
 5. Always leave the repo healthier: update tests and docs relevant to the change.
-6. Commands must be real: only use commands that exist in this repo (see Canonical Commands). If a command is not listed, find it in docs or project scripts before using.
 
 ## Default Workflow
 1. Clarify scope: restate the goal and list touched areas/files.
@@ -69,28 +68,40 @@ If an area is not in this table, STOP and locate the correct docs/commands by se
 
 ## Canonical Commands (Single Source of Truth)
 
+### Windows / Codex Shell Setup
+
+This repo uses Unix-style `nvm` under the user profile, but Codex PowerShell sessions do not source the lazy-loaded bash `nvm.sh` setup. Before running Node or pnpm commands in Codex, prepend the active NVM Node bin directory and use the `.cmd` shim because PowerShell execution policy may block `.ps1` shims:
+
+```powershell
+$nodeBin = Join-Path $env:USERPROFILE '.nvm\versions\node\v24.14.0\bin'
+$env:PATH = "$nodeBin;$env:PATH"
+pnpm.cmd --version
+```
+
+Use `pnpm.cmd`, not bare `pnpm`, when running commands from PowerShell in Codex.
+
 ### Setup
 
-TBD
+pnpm.cmd install
 
 
 ### Build
 
-TBD
+pnpm.cmd build
 
 ### Lint / Format
 
-TBD
+Lint / Static Check: pnpm.cmd lint
 
 ### Tests
-Unit Tests: TBD
+Unit Tests: pnpm.cmd test
 
-Integration Tests: TBD
+Integration Tests: pnpm.cmd test:e2e
 
 
 ### Run Locally
 
-TBD
+pnpm.cmd dev
 
 
 ## Output Expectations
