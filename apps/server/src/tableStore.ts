@@ -31,20 +31,30 @@ type HandParticipantState = {
   seatNumber: number;
   holeCards: Card[];
   currentBet: number;
+  totalCommitted: number;
+  hasFolded: boolean;
+  hasActed: boolean;
 };
 
 type ActiveHand = {
   handNumber: number;
-  phase: "preflop";
+  phase: "preflop" | "flop" | "turn" | "river" | "showdown" | "settled";
   deck: Card[];
   board: Card[];
   buttonSeat: number;
   smallBlindSeat: number;
   bigBlindSeat: number;
-  currentActorSeat: number;
+  currentActorSeat: number | null;
   participants: Map<string, HandParticipantState>;
   pot: number;
   currentBet: number;
+  actionLog: string[];
+  settlementSummary: string | null;
+  shouldRevealHoleCards: boolean;
+};
+
+type HandEvaluator = {
+  evaluate(cards: Card[]): HandScore;
 };
 
 export type PrivateTable = {
@@ -174,6 +184,37 @@ export function createTableStore(defaults: TableDefaults, origin?: string) {
     };
   }
 
+  function playerAction(
+    tableId: string,
+    participantId: string,
+    action: "fold" | "check" | "call" | "raise",
+    raiseTo?: number
+  ): TableSessionResponse {
+    const table = getExistingTable(tables, tableId);
+    const participant = table.participants.get(participantId);
+    const hand = table.hand;
+
+    if (!participant) {
+      throw new Error("Participant was not found for this table.");
+    }
+
+    if (!hand || hand.phase === "settled") {
+      throw new Error("There is no active hand.");
+    }
+
+    if (participant.kind !== "player" || participant.seatNumber !== hand.currentActorSeat) {
+      throw new Error("It is not your turn.");
+    }
+
+    applyPlayerAction(table, hand, participant, action, raiseTo);
+
+    return {
+      ok: true,
+      sessionToken: participant.sessionToken,
+      snapshot: createSnapshot(table, participant.id, origin)
+    };
+  }
+
   function getTable(tableId: string): PrivateTable | undefined {
     return tables.get(tableId);
   }
@@ -185,6 +226,7 @@ export function createTableStore(defaults: TableDefaults, origin?: string) {
     disconnectParticipant,
     snapshotFor,
     startHand,
+    playerAction,
     getTable
   };
 }
@@ -269,12 +311,20 @@ function createFirstHand(table: PrivateTable, activePlayers: Participant[]): Act
       participantId: player.id,
       seatNumber: player.seatNumber ?? 0,
       holeCards,
-      currentBet: 0
+      currentBet: 0,
+      totalCommitted: 0,
+      hasFolded: false,
+      hasActed: false
     });
   }
 
   const smallBlindPlayer = activePlayers.find((player) => player.seatNumber === smallBlindSeat);
   const bigBlindPlayer = activePlayers.find((player) => player.seatNumber === bigBlindSeat);
+
+  if (!smallBlindPlayer || !bigBlindPlayer) {
+    throw new Error("Blind players were not found.");
+  }
+
   const smallBlindAmount = postBlind(smallBlindPlayer, handParticipants, table.defaults.blinds.smallBlind);
   const bigBlindAmount = postBlind(bigBlindPlayer, handParticipants, table.defaults.blinds.bigBlind);
 
@@ -289,7 +339,13 @@ function createFirstHand(table: PrivateTable, activePlayers: Participant[]): Act
     currentActorSeat,
     participants: handParticipants,
     pot: smallBlindAmount + bigBlindAmount,
-    currentBet: Math.max(smallBlindAmount, bigBlindAmount)
+    currentBet: Math.max(smallBlindAmount, bigBlindAmount),
+    actionLog: [
+      `${smallBlindPlayer.displayName} posted small blind $${smallBlindAmount}.`,
+      `${bigBlindPlayer.displayName} posted big blind $${bigBlindAmount}.`
+    ],
+    settlementSummary: null,
+    shouldRevealHoleCards: false
   };
 }
 
@@ -310,7 +366,9 @@ function createHandSnapshot(table: PrivateTable, viewer: Participant): HandSnaps
       currentActorSeat: null,
       currentActorId: null,
       legalActions: [],
-      viewerHoleCards: []
+      viewerHoleCards: [],
+      actionLog: [],
+      settlementSummary: null
     };
   }
 
@@ -332,8 +390,10 @@ function createHandSnapshot(table: PrivateTable, viewer: Participant): HandSnaps
     callAmount,
     currentActorSeat: hand.currentActorSeat,
     currentActorId: currentActor?.id ?? null,
-    legalActions: viewer.seatNumber === hand.currentActorSeat ? legalActionsFor(viewer, callAmount) : [],
-    viewerHoleCards: viewerHandState?.holeCards ?? []
+    legalActions: viewer.seatNumber === hand.currentActorSeat ? legalActionsFor(viewer, callAmount, hand) : [],
+    viewerHoleCards: viewerHandState?.holeCards ?? [],
+    actionLog: hand.actionLog,
+    settlementSummary: hand.settlementSummary
   };
 }
 
@@ -347,6 +407,8 @@ function summarizeSeatPlayer(participant: Participant, table: PrivateTable) {
     stack: participant.stack,
     currentBet: handState?.currentBet ?? 0,
     hasCards: Boolean(handState),
+    hasFolded: handState?.hasFolded ?? false,
+    visibleHoleCards: visibleHoleCardsFor(participant, table),
     isButton: hand?.buttonSeat === seatNumber,
     isSmallBlind: hand?.smallBlindSeat === seatNumber,
     isBigBlind: hand?.bigBlindSeat === seatNumber,
@@ -434,6 +496,7 @@ function postBlind(
 
   player.stack -= postedAmount;
   handState.currentBet = postedAmount;
+  handState.totalCommitted = postedAmount;
 
   return postedAmount;
 }
@@ -445,14 +508,361 @@ function nextActiveSeat(activePlayers: Participant[], afterSeat: number): number
   return nextSeat ?? sortedSeats[0] ?? 0;
 }
 
-function legalActionsFor(player: Participant, callAmount: number): LegalAction[] {
+function applyPlayerAction(
+  table: PrivateTable,
+  hand: ActiveHand,
+  player: Participant,
+  action: "fold" | "check" | "call" | "raise",
+  raiseTo?: number
+): void {
+  const handState = hand.participants.get(player.id);
+
+  if (!handState || handState.hasFolded) {
+    throw new Error("You are not active in this hand.");
+  }
+
+  const callAmount = Math.max(0, hand.currentBet - handState.currentBet);
+
+  if (action === "fold") {
+    handState.hasFolded = true;
+    handState.hasActed = true;
+    hand.actionLog.push(`${player.displayName} folded.`);
+  } else if (action === "check") {
+    if (callAmount > 0) {
+      throw new Error("Cannot check while facing a bet.");
+    }
+
+    handState.hasActed = true;
+    hand.actionLog.push(`${player.displayName} checked.`);
+  } else if (action === "call") {
+    if (callAmount <= 0) {
+      throw new Error("There is no bet to call.");
+    }
+
+    if (player.stack < callAmount) {
+      throw new Error("Not enough chips to call.");
+    }
+
+    commitChips(player, handState, callAmount);
+    hand.pot += callAmount;
+    handState.hasActed = true;
+    hand.actionLog.push(`${player.displayName} called $${callAmount}.`);
+  } else {
+    if (typeof raiseTo !== "number" || !Number.isInteger(raiseTo)) {
+      throw new Error("Raise amount is required.");
+    }
+
+    const minimumRaiseTo = hand.currentBet + table.defaults.blinds.bigBlind;
+
+    if (raiseTo < minimumRaiseTo) {
+      throw new Error(`Raise must be at least $${minimumRaiseTo}.`);
+    }
+
+    const additionalChips = raiseTo - handState.currentBet;
+
+    if (additionalChips <= callAmount) {
+      throw new Error("Raise must increase the current bet.");
+    }
+
+    if (player.stack < additionalChips) {
+      throw new Error("Not enough chips to raise.");
+    }
+
+    commitChips(player, handState, additionalChips);
+    hand.pot += additionalChips;
+    hand.currentBet = raiseTo;
+
+    for (const otherState of hand.participants.values()) {
+      if (!otherState.hasFolded) {
+        otherState.hasActed = otherState.participantId === player.id;
+      }
+    }
+
+    hand.actionLog.push(`${player.displayName} raised to $${raiseTo}.`);
+  }
+
+  const remainingStates = activeHandStates(hand);
+
+  if (remainingStates.length === 1) {
+    settleFoldWin(table, hand, remainingStates[0]);
+    return;
+  }
+
+  if (isBettingRoundComplete(hand)) {
+    advanceBettingRound(table, hand);
+    return;
+  }
+
+  hand.currentActorSeat = nextActiveHandSeat(hand, player.seatNumber ?? 0);
+}
+
+function commitChips(player: Participant, handState: HandParticipantState, amount: number): void {
+  player.stack -= amount;
+  handState.currentBet += amount;
+  handState.totalCommitted += amount;
+}
+
+function activeHandStates(hand: ActiveHand): HandParticipantState[] {
+  return [...hand.participants.values()]
+    .filter((state) => !state.hasFolded)
+    .sort((left, right) => left.seatNumber - right.seatNumber);
+}
+
+function isBettingRoundComplete(hand: ActiveHand): boolean {
+  return activeHandStates(hand).every((state) => state.hasActed && state.currentBet === hand.currentBet);
+}
+
+function advanceBettingRound(table: PrivateTable, hand: ActiveHand): void {
+  if (hand.phase === "river") {
+    settleShowdown(table, hand);
+    return;
+  }
+
+  const nextPhase = hand.phase === "preflop" ? "flop" : hand.phase === "flop" ? "turn" : "river";
+  const cardsToDeal = nextPhase === "flop" ? 3 : 1;
+
+  for (let index = 0; index < cardsToDeal; index += 1) {
+    hand.board.push(drawCard(hand.deck));
+  }
+
+  hand.phase = nextPhase;
+  hand.currentBet = 0;
+
+  for (const state of hand.participants.values()) {
+    state.currentBet = 0;
+    state.hasActed = false;
+  }
+
+  hand.currentActorSeat = firstPostflopActorSeat(hand);
+  hand.actionLog.push(`${formatStreet(nextPhase)} dealt.`);
+}
+
+function settleFoldWin(table: PrivateTable, hand: ActiveHand, winningState: HandParticipantState | undefined): void {
+  if (!winningState) {
+    throw new Error("No winning player was found.");
+  }
+
+  const winner = participantById(table, winningState.participantId);
+
+  winner.stack += hand.pot;
+  hand.phase = "settled";
+  hand.currentActorSeat = null;
+  hand.shouldRevealHoleCards = false;
+  hand.settlementSummary = `${winner.displayName} won $${hand.pot} after everyone else folded.`;
+  hand.actionLog.push(hand.settlementSummary);
+}
+
+function settleShowdown(table: PrivateTable, hand: ActiveHand): void {
+  const contenders = activeHandStates(hand);
+  const rankedHands = contenders.map((state) => ({
+    state,
+    score: simpleHandEvaluator.evaluate([...state.holeCards, ...hand.board])
+  }));
+  const bestScore = rankedHands.reduce((best, ranked) =>
+    compareScores(ranked.score, best.score) > 0 ? ranked : best
+  ).score;
+  const winners = rankedHands.filter((ranked) => compareScores(ranked.score, bestScore) === 0);
+  const baseShare = Math.floor(hand.pot / winners.length);
+  let remainder = hand.pot % winners.length;
+
+  for (const winner of winners) {
+    const player = participantById(table, winner.state.participantId);
+    const extraChip = remainder > 0 ? 1 : 0;
+
+    player.stack += baseShare + extraChip;
+    remainder -= extraChip;
+  }
+
+  hand.phase = "settled";
+  hand.currentActorSeat = null;
+  hand.shouldRevealHoleCards = true;
+  hand.settlementSummary =
+    winners.length === 1
+      ? `${participantById(table, winners[0]?.state.participantId ?? "").displayName} won $${hand.pot} at showdown.`
+      : `${winners.map((winner) => participantById(table, winner.state.participantId).displayName).join(", ")} split $${hand.pot} at showdown.`;
+  hand.actionLog.push("Showdown.");
+  hand.actionLog.push(hand.settlementSummary);
+}
+
+function firstPostflopActorSeat(hand: ActiveHand): number {
+  return nextActiveHandSeat(hand, hand.buttonSeat);
+}
+
+function nextActiveHandSeat(hand: ActiveHand, afterSeat: number): number {
+  const activeSeats = activeHandStates(hand).map((state) => state.seatNumber);
+  const nextSeat = activeSeats.find((seat) => seat > afterSeat);
+
+  return nextSeat ?? activeSeats[0] ?? afterSeat;
+}
+
+function visibleHoleCardsFor(participant: Participant, table: PrivateTable): Card[] {
+  const hand = table.hand;
+  const handState = hand?.participants.get(participant.id);
+
+  if (!hand || !handState || !hand.shouldRevealHoleCards || handState.hasFolded) {
+    return [];
+  }
+
+  return handState.holeCards;
+}
+
+function participantById(table: PrivateTable, participantId: string): Participant {
+  const participant = table.participants.get(participantId);
+
+  if (!participant) {
+    throw new Error("Participant was not found for this table.");
+  }
+
+  return participant;
+}
+
+function formatStreet(phase: ActiveHand["phase"]): string {
+  return phase === "flop" ? "Flop" : phase === "turn" ? "Turn" : phase === "river" ? "River" : "Street";
+}
+
+type HandScore = [number, ...number[]];
+
+const simpleHandEvaluator: HandEvaluator = {
+  evaluate: evaluateBestHand
+};
+
+function evaluateBestHand(cards: Card[]): HandScore {
+  const rankValues = cards.map((card) => rankValue(card.rank));
+  const counts = new Map<number, number>();
+
+  for (const value of rankValues) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+
+  const groups = [...counts.entries()].sort(
+    ([leftRank, leftCount], [rightRank, rightCount]) => rightCount - leftCount || rightRank - leftRank
+  );
+  const flushCards = cards
+    .filter((card) => cards.filter((candidate) => candidate.suit === card.suit).length >= 5)
+    .map((card) => rankValue(card.rank))
+    .sort((left, right) => right - left);
+  const straightHigh = straightHighCard(rankValues);
+  const straightFlushHigh = flushCards.length >= 5 ? straightHighCard(flushCards) : null;
+  const four = groups.find(([, count]) => count === 4);
+  const threes = groups.filter(([, count]) => count === 3);
+  const pairs = groups.filter(([, count]) => count === 2);
+
+  if (straightFlushHigh) {
+    return [8, straightFlushHigh];
+  }
+
+  if (four) {
+    return [7, four[0], ...topRanks(rankValues, 1, [four[0]])];
+  }
+
+  if (threes.length > 0 && (pairs.length > 0 || threes.length > 1)) {
+    const threeRank = threes[0]?.[0] ?? 0;
+    const pairRank = pairs[0]?.[0] ?? threes[1]?.[0] ?? 0;
+
+    return [6, threeRank, pairRank];
+  }
+
+  if (flushCards.length >= 5) {
+    return [5, ...topRanks(flushCards, 5)];
+  }
+
+  if (straightHigh) {
+    return [4, straightHigh];
+  }
+
+  if (threes.length > 0) {
+    const threeRank = threes[0]?.[0] ?? 0;
+
+    return [3, threeRank, ...topRanks(rankValues, 2, [threeRank])];
+  }
+
+  if (pairs.length >= 2) {
+    const pairRanks = pairs.slice(0, 2).map(([rank]) => rank);
+
+    return [2, ...pairRanks, ...topRanks(rankValues, 1, pairRanks)];
+  }
+
+  if (pairs.length === 1) {
+    const pairRank = pairs[0]?.[0] ?? 0;
+
+    return [1, pairRank, ...topRanks(rankValues, 3, [pairRank])];
+  }
+
+  return [0, ...topRanks(rankValues, 5)];
+}
+
+function rankValue(rank: CardRank): number {
+  const values: Record<CardRank, number> = {
+    "2": 2,
+    "3": 3,
+    "4": 4,
+    "5": 5,
+    "6": 6,
+    "7": 7,
+    "8": 8,
+    "9": 9,
+    "10": 10,
+    J: 11,
+    Q: 12,
+    K: 13,
+    A: 14
+  };
+
+  return values[rank];
+}
+
+function straightHighCard(values: number[]): number | null {
+  const uniqueValues = [...new Set(values)].sort((left, right) => right - left);
+
+  if (uniqueValues.includes(14)) {
+    uniqueValues.push(1);
+  }
+
+  for (let index = 0; index <= uniqueValues.length - 5; index += 1) {
+    const highCard = uniqueValues[index] ?? 0;
+    const straight = [0, 1, 2, 3, 4].every((offset) => uniqueValues[index + offset] === highCard - offset);
+
+    if (straight) {
+      return highCard;
+    }
+  }
+
+  return null;
+}
+
+function topRanks(values: number[], count: number, excludedRanks: number[] = []): number[] {
+  return [...new Set(values)]
+    .filter((value) => !excludedRanks.includes(value))
+    .sort((left, right) => right - left)
+    .slice(0, count);
+}
+
+function compareScores(left: HandScore, right: HandScore): number {
+  const length = Math.max(left.length, right.length);
+
+  for (let index = 0; index < length; index += 1) {
+    const difference = (left[index] ?? 0) - (right[index] ?? 0);
+
+    if (difference !== 0) {
+      return difference;
+    }
+  }
+
+  return 0;
+}
+
+function legalActionsFor(player: Participant, callAmount: number, hand: ActiveHand): LegalAction[] {
+  if (hand.phase === "settled") {
+    return [];
+  }
+
   const canAddChips = player.stack > 0;
 
   if (callAmount > 0) {
-    return canAddChips ? ["fold", "call", "raise", "all-in"] : ["fold"];
+    return canAddChips ? ["fold", "call", "raise"] : ["fold"];
   }
 
-  return canAddChips ? ["check", "raise", "all-in"] : ["check"];
+  return canAddChips ? ["check", "raise"] : ["check"];
 }
 
 function reconnectParticipant(table: PrivateTable, sessionToken: string): Participant | undefined {

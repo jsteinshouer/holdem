@@ -233,7 +233,6 @@ dd {
 
 .felt-panel__header,
 .hole-card-tray,
-.legal-actions,
 .seat__title,
 .seat__badges {
   display: flex;
@@ -248,7 +247,7 @@ dd {
 }
 
 .pot-chip,
-.legal-actions span,
+.action-bar > span,
 .seat__badges span {
   border: 1px solid rgb(245 234 210 / 18%);
   border-radius: 999px;
@@ -464,14 +463,38 @@ dd {
   font-weight: 900;
 }
 
-.legal-actions {
-  flex-wrap: wrap;
-  min-height: 34px;
+.action-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 330px);
+  gap: 12px;
+  align-items: end;
+  min-height: 44px;
   color: rgb(245 234 210 / 68%);
   font-weight: 900;
 }
 
-.legal-actions span,
+.action-bar__buttons,
+.raise-control {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.raise-control {
+  grid-template-columns: auto minmax(86px, 1fr) auto;
+  align-items: center;
+}
+
+.raise-control label {
+  color: rgb(245 234 210 / 70%);
+  font-size: 0.84rem;
+}
+
+.raise-control input {
+  min-width: 0;
+}
+
+.action-bar > span,
 .seat__badges span {
   padding: 7px 9px;
 }
@@ -522,6 +545,57 @@ dd {
 
 .seat__badges {
   flex-wrap: wrap;
+}
+
+.revealed-cards {
+  display: flex;
+  gap: 6px;
+}
+
+.revealed-cards .playing-card {
+  width: 46px;
+  height: 64px;
+  border-radius: 5px;
+}
+
+.revealed-cards .playing-card__corner {
+  top: 4px;
+  left: 4px;
+}
+
+.revealed-cards .playing-card__corner--bottom,
+.revealed-cards .playing-card__pips {
+  display: none;
+}
+
+.revealed-cards .playing-card__face {
+  inset: 19px 10px 10px;
+}
+
+.revealed-cards .playing-card__face span {
+  font-size: 1.1rem;
+}
+
+.action-log {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid rgb(245 234 210 / 14%);
+}
+
+.action-log h3 {
+  margin: 0 0 10px;
+  color: #fce6a1;
+  font-size: 1rem;
+}
+
+.action-log ol {
+  display: grid;
+  max-height: 220px;
+  gap: 8px;
+  padding-left: 20px;
+  margin: 0;
+  overflow: auto;
+  color: rgb(245 234 210 / 72%);
 }
 
 .rail-panel {
@@ -579,7 +653,9 @@ dd {
   }
 
   .seat-grid,
-  .table-metrics {
+  .table-metrics,
+  .action-bar,
+  .raise-control {
     grid-template-columns: 1fr;
   }
 }

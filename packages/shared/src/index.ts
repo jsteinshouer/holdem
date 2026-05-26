@@ -49,6 +49,8 @@ export type SeatSnapshot = {
         stack: number;
         currentBet: number;
         hasCards: boolean;
+        hasFolded: boolean;
+        visibleHoleCards: Card[];
         isButton: boolean;
         isSmallBlind: boolean;
         isBigBlind: boolean;
@@ -81,6 +83,8 @@ export type HandSnapshot = {
   currentActorId: string | null;
   legalActions: LegalAction[];
   viewerHoleCards: Card[];
+  actionLog: string[];
+  settlementSummary: string | null;
 };
 
 export type TableSnapshot = {
@@ -118,6 +122,12 @@ export type ReconnectPlayerPayload = {
 
 export type StartHandPayload = {
   tableId: string;
+};
+
+export type PlayerActionPayload = {
+  tableId: string;
+  action: Exclude<LegalAction, "all-in">;
+  raiseTo?: number;
 };
 
 export type TableSessionResponse = {

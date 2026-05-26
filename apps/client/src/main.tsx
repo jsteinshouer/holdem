@@ -5,6 +5,8 @@ import type {
   Card,
   CreateTablePayload,
   JoinTablePayload,
+  LegalAction,
+  PlayerActionPayload,
   StartHandPayload,
   TableCommandResponse,
   TableSnapshot
@@ -121,6 +123,25 @@ function App() {
     }
   }
 
+  async function playerAction(action: PlayerActionPayload["action"], raiseTo?: number) {
+    if (!socket || !snapshot) {
+      return;
+    }
+
+    setError(null);
+
+    try {
+      const response = await emitCommand<PlayerActionPayload>(socket, "player:action", {
+        tableId: snapshot.tableId,
+        action,
+        ...(raiseTo ? { raiseTo } : {})
+      });
+      handleSessionResponse(response);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Unable to act.");
+    }
+  }
+
   function handleSessionResponse(response: TableCommandResponse): TableSnapshot {
     if (!response.ok) {
       throw new Error(response.reason);
@@ -148,7 +169,13 @@ function App() {
         </header>
 
         {snapshot ? (
-          <TableRoom error={error} inviteLink={inviteLink} snapshot={snapshot} onStartHand={startHand} />
+          <TableRoom
+            error={error}
+            inviteLink={inviteLink}
+            snapshot={snapshot}
+            onPlayerAction={playerAction}
+            onStartHand={startHand}
+          />
         ) : tableIdFromUrl ? (
           <JoinTablePanel
             displayName={displayName}
@@ -244,19 +271,28 @@ function TableRoom({
   error,
   snapshot,
   inviteLink,
+  onPlayerAction,
   onStartHand
 }: {
   error: string | null;
   snapshot: TableSnapshot;
   inviteLink: string;
+  onPlayerAction: (action: PlayerActionPayload["action"], raiseTo?: number) => void;
   onStartHand: () => void;
 }) {
+  const [raiseTo, setRaiseTo] = useState(() => String(snapshot.hand.currentBet + snapshot.defaults.blinds.bigBlind));
   const host = snapshot.seats
     .map((seat) => seat.player)
     .find((player) => player?.isHost);
   const currentActor = snapshot.seats
     .map((seat) => seat.player)
     .find((player) => player?.id === snapshot.hand.currentActorId);
+  const minimumRaiseTo = snapshot.hand.currentBet + snapshot.defaults.blinds.bigBlind;
+  const canRaise = snapshot.hand.legalActions.includes("raise");
+
+  useEffect(() => {
+    setRaiseTo(String(minimumRaiseTo));
+  }, [minimumRaiseTo, snapshot.hand.currentActorId]);
 
   return (
     <div className="table-layout">
@@ -335,11 +371,14 @@ function TableRoom({
           </div>
         </div>
 
-        <div className="legal-actions" aria-label="Legal actions">
-          {snapshot.hand.legalActions.length > 0
-            ? snapshot.hand.legalActions.map((action) => <span key={action}>{formatAction(action)}</span>)
-            : "No action available"}
-        </div>
+        <ActionBar
+          canRaise={canRaise}
+          legalActions={snapshot.hand.legalActions}
+          minimumRaiseTo={minimumRaiseTo}
+          raiseTo={raiseTo}
+          onAction={onPlayerAction}
+          onRaiseToChange={setRaiseTo}
+        />
       </section>
 
       <section className="seat-grid" aria-label="Seated players">
@@ -357,8 +396,16 @@ function TableRoom({
                   {seat.player.isSmallBlind ? <span>Small blind</span> : null}
                   {seat.player.isBigBlind ? <span>Big blind</span> : null}
                   {seat.player.hasCards ? <span>Cards dealt</span> : null}
+                  {seat.player.hasFolded ? <span>Folded</span> : null}
                   {seat.player.isHost ? <span>Host</span> : null}
                 </div>
+                {seat.player.visibleHoleCards.length > 0 ? (
+                  <div className="revealed-cards" aria-label={`${seat.player.displayName} revealed cards`}>
+                    {seat.player.visibleHoleCards.map((card) => (
+                      <CardView card={card} key={`${seat.player?.id}-${card.rank}-${card.suit}`} />
+                    ))}
+                  </div>
+                ) : null}
                 <span>
                   {seat.player.isConnected ? "Connected" : "Away"} / Bet ${seat.player.currentBet}
                 </span>
@@ -394,7 +441,75 @@ function TableRoom({
           <button disabled={!snapshot.availableControls.canSeatSpectators}>Seat spectator</button>
         </div>
         {error ? <p className="form-error">{error}</p> : null}
+        <div className="action-log" aria-label="Public action log">
+          <h3>Action log</h3>
+          {snapshot.hand.actionLog.length > 0 ? (
+            <ol>
+              {snapshot.hand.actionLog.map((entry, index) => (
+                <li key={`${entry}-${index}`}>{entry}</li>
+              ))}
+            </ol>
+          ) : (
+            <p>No hand actions yet.</p>
+          )}
+        </div>
       </aside>
+    </div>
+  );
+}
+
+function ActionBar({
+  canRaise,
+  legalActions,
+  minimumRaiseTo,
+  raiseTo,
+  onAction,
+  onRaiseToChange
+}: {
+  canRaise: boolean;
+  legalActions: LegalAction[];
+  minimumRaiseTo: number;
+  raiseTo: string;
+  onAction: (action: PlayerActionPayload["action"], raiseTo?: number) => void;
+  onRaiseToChange: (raiseTo: string) => void;
+}) {
+  const actionOrder: PlayerActionPayload["action"][] = ["fold", "check", "call"];
+
+  return (
+    <div className="action-bar" aria-label="Player actions">
+      {legalActions.length > 0 ? (
+        <>
+          <div className="action-bar__buttons">
+            {actionOrder.map((action) => (
+              <button
+                disabled={!legalActions.includes(action)}
+                key={action}
+                onClick={() => onAction(action)}
+                type="button"
+              >
+                {formatAction(action)}
+              </button>
+            ))}
+          </div>
+          <div className="raise-control">
+            <label htmlFor="raise-to">Raise to</label>
+            <input
+              disabled={!canRaise}
+              id="raise-to"
+              min={minimumRaiseTo}
+              step={1}
+              type="number"
+              value={raiseTo}
+              onChange={(event) => onRaiseToChange(event.target.value)}
+            />
+            <button disabled={!canRaise} onClick={() => onAction("raise", Number(raiseTo))} type="button">
+              Raise
+            </button>
+          </div>
+        </>
+      ) : (
+        <span>No action available</span>
+      )}
     </div>
   );
 }

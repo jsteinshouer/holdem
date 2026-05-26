@@ -15,9 +15,22 @@ export default defineConfig({
     { name: "mobile-chrome", use: { ...devices["Pixel 7"] } },
     { name: "mobile-safari", use: { ...devices["iPhone 15"] } }
   ],
-  webServer: {
-    command: "pnpm --filter @friendly-holdem/client dev --host 127.0.0.1",
-    url: "http://127.0.0.1:5173",
-    reuseExistingServer: true
-  }
+  webServer: [
+    {
+      command: "pnpm --filter @friendly-holdem/server dev",
+      env: {
+        CLIENT_ORIGIN: "http://127.0.0.1:5173"
+      },
+      url: "http://127.0.0.1:8787",
+      reuseExistingServer: true
+    },
+    {
+      command: "pnpm --filter @friendly-holdem/client dev --host 127.0.0.1",
+      env: {
+        VITE_SERVER_URL: "http://127.0.0.1:8787"
+      },
+      url: "http://127.0.0.1:5173",
+      reuseExistingServer: true
+    }
+  ]
 });

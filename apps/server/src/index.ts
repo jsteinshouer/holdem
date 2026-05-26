@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import type {
   CreateTablePayload,
   JoinTablePayload,
+  PlayerActionPayload,
   ReconnectPlayerPayload,
   StartHandPayload,
   TableCommandResponse
@@ -103,6 +104,31 @@ io.on("connection", (socket) => {
         tableId: payload.tableId,
         participantId: participant.participantId,
         seatedPlayerCount: response.snapshot.seatedPlayerCount,
+        phase: response.snapshot.hand.phase
+      });
+      broadcastSnapshots(payload.tableId);
+      return response;
+    });
+  });
+
+  socket.on("player:action", (payload: PlayerActionPayload, reply?: (response: TableCommandResponse) => void) => {
+    runTableCommand(reply, () => {
+      const participant = participantBySocket.get(socket.id);
+
+      if (!participant || participant.tableId !== payload.tableId) {
+        throw new Error("Join the table before acting.");
+      }
+
+      const response = tableStore.playerAction(
+        payload.tableId,
+        participant.participantId,
+        payload.action,
+        payload.raiseTo
+      );
+      logger.info("player action", {
+        tableId: payload.tableId,
+        participantId: participant.participantId,
+        action: payload.action,
         phase: response.snapshot.hand.phase
       });
       broadcastSnapshots(payload.tableId);
