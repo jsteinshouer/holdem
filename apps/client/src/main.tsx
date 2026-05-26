@@ -2,8 +2,10 @@ import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { io, type Socket } from "socket.io-client";
 import type {
+  Card,
   CreateTablePayload,
   JoinTablePayload,
+  StartHandPayload,
   TableCommandResponse,
   TableSnapshot
 } from "@friendly-holdem/shared";
@@ -102,6 +104,23 @@ function App() {
     }
   }
 
+  async function startHand() {
+    if (!socket || !snapshot) {
+      return;
+    }
+
+    setError(null);
+
+    try {
+      const response = await emitCommand<StartHandPayload>(socket, "hand:start", {
+        tableId: snapshot.tableId
+      });
+      handleSessionResponse(response);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Unable to start hand.");
+    }
+  }
+
   function handleSessionResponse(response: TableCommandResponse): TableSnapshot {
     if (!response.ok) {
       throw new Error(response.reason);
@@ -129,7 +148,7 @@ function App() {
         </header>
 
         {snapshot ? (
-          <TableRoom snapshot={snapshot} inviteLink={inviteLink} />
+          <TableRoom error={error} inviteLink={inviteLink} snapshot={snapshot} onStartHand={startHand} />
         ) : tableIdFromUrl ? (
           <JoinTablePanel
             displayName={displayName}
@@ -221,10 +240,23 @@ function JoinTablePanel(props: {
   );
 }
 
-function TableRoom({ snapshot, inviteLink }: { snapshot: TableSnapshot; inviteLink: string }) {
+function TableRoom({
+  error,
+  snapshot,
+  inviteLink,
+  onStartHand
+}: {
+  error: string | null;
+  snapshot: TableSnapshot;
+  inviteLink: string;
+  onStartHand: () => void;
+}) {
   const host = snapshot.seats
     .map((seat) => seat.player)
     .find((player) => player?.isHost);
+  const currentActor = snapshot.seats
+    .map((seat) => seat.player)
+    .find((player) => player?.id === snapshot.hand.currentActorId);
 
   return (
     <div className="table-layout">
@@ -256,17 +288,80 @@ function TableRoom({ snapshot, inviteLink }: { snapshot: TableSnapshot; inviteLi
               ${snapshot.defaults.blinds.smallBlind}/${snapshot.defaults.blinds.bigBlind}
             </dd>
           </div>
+          <div>
+            <dt>Phase</dt>
+            <dd>{formatPhase(snapshot.hand.phase)}</dd>
+          </div>
+          <div>
+            <dt>Pot</dt>
+            <dd>${snapshot.hand.pot}</dd>
+          </div>
+          <div>
+            <dt>To call</dt>
+            <dd>${snapshot.hand.callAmount}</dd>
+          </div>
+          <div>
+            <dt>Action</dt>
+            <dd>{currentActor?.displayName ?? "Waiting"}</dd>
+          </div>
         </dl>
+      </section>
+
+      <section className="felt-panel" aria-labelledby="felt-heading">
+        <div className="felt-panel__header">
+          <div>
+            <p className="eyebrow">Hand {snapshot.hand.handNumber || "-"}</p>
+            <h2 id="felt-heading">{formatPhase(snapshot.hand.phase)}</h2>
+          </div>
+          <span className="pot-chip">${snapshot.hand.currentBet} current bet</span>
+        </div>
+
+        <div className="board-row" aria-label="Community cards">
+          {snapshot.hand.board.length > 0 ? (
+            snapshot.hand.board.map((card) => <CardView card={card} key={`${card.rank}-${card.suit}`} />)
+          ) : (
+            <span className="empty-board">Board waiting for the flop</span>
+          )}
+        </div>
+
+        <div className="hole-card-tray" aria-label="Your hole cards">
+          <span>Your cards</span>
+          <div>
+            {snapshot.hand.viewerHoleCards.length > 0 ? (
+              snapshot.hand.viewerHoleCards.map((card) => <CardView card={card} key={`${card.rank}-${card.suit}`} />)
+            ) : (
+              <span className="card-back">Hidden</span>
+            )}
+          </div>
+        </div>
+
+        <div className="legal-actions" aria-label="Legal actions">
+          {snapshot.hand.legalActions.length > 0
+            ? snapshot.hand.legalActions.map((action) => <span key={action}>{formatAction(action)}</span>)
+            : "No action available"}
+        </div>
       </section>
 
       <section className="seat-grid" aria-label="Seated players">
         {snapshot.seats.map((seat) => (
-          <article className="seat" key={seat.seatNumber}>
+          <article className={`seat ${seat.player?.isCurrentActor ? "seat--acting" : ""}`} key={seat.seatNumber}>
             <span className="seat__number">Seat {seat.seatNumber + 1}</span>
             {seat.player ? (
               <>
-                <strong>{seat.player.displayName}</strong>
-                <span>{seat.player.isHost ? "Host" : seat.player.isConnected ? "Connected" : "Away"}</span>
+                <div className="seat__title">
+                  <strong>{seat.player.displayName}</strong>
+                  <span>${seat.player.stack}</span>
+                </div>
+                <div className="seat__badges" aria-label={`${seat.player.displayName} seat status`}>
+                  {seat.player.isButton ? <span>Button</span> : null}
+                  {seat.player.isSmallBlind ? <span>Small blind</span> : null}
+                  {seat.player.isBigBlind ? <span>Big blind</span> : null}
+                  {seat.player.hasCards ? <span>Cards dealt</span> : null}
+                  {seat.player.isHost ? <span>Host</span> : null}
+                </div>
+                <span>
+                  {seat.player.isConnected ? "Connected" : "Away"} / Bet ${seat.player.currentBet}
+                </span>
               </>
             ) : (
               <>
@@ -293,12 +388,117 @@ function TableRoom({ snapshot, inviteLink }: { snapshot: TableSnapshot; inviteLi
           <p>No spectators yet.</p>
         )}
         <div className="control-strip" aria-label="Available controls">
-          <button disabled={!snapshot.availableControls.canStartHand}>Start hand</button>
+          <button disabled={!snapshot.availableControls.canStartHand} onClick={onStartHand} type="button">
+            Start hand
+          </button>
           <button disabled={!snapshot.availableControls.canSeatSpectators}>Seat spectator</button>
         </div>
+        {error ? <p className="form-error">{error}</p> : null}
       </aside>
     </div>
   );
+}
+
+function CardView({ card }: { card: Card }) {
+  const suit = suitSymbol(card.suit);
+  const pips = pipPositions(card.rank);
+  const label = `${card.rank} of ${card.suit}`;
+
+  return (
+    <span aria-label={label} className={`playing-card playing-card--${card.suit}`} role="img">
+      <span className="playing-card__corner playing-card__corner--top">
+        <strong>{card.rank}</strong>
+        <span>{suit}</span>
+      </span>
+      {pips.length > 0 ? (
+        <span className={`playing-card__pips playing-card__pips--${pips.length}`} aria-hidden="true">
+          {pips.map((position, index) => (
+            <span className={`playing-card__pip playing-card__pip--${position}`} key={`${position}-${index}`}>
+              {suit}
+            </span>
+          ))}
+        </span>
+      ) : (
+        <span className="playing-card__face" aria-hidden="true">
+          <span>{card.rank}</span>
+          <small>{suit}</small>
+        </span>
+      )}
+      <span className="playing-card__corner playing-card__corner--bottom" aria-hidden="true">
+        <strong>{card.rank}</strong>
+        <span>{suit}</span>
+      </span>
+    </span>
+  );
+}
+
+function formatPhase(phase: string): string {
+  return phase === "preflop" ? "Preflop" : phase[0]?.toUpperCase() + phase.slice(1);
+}
+
+function formatAction(action: string): string {
+  return action === "all-in" ? "All-in" : action[0]?.toUpperCase() + action.slice(1);
+}
+
+function suitSymbol(suit: Card["suit"]): string {
+  const symbols: Record<Card["suit"], string> = {
+    clubs: "♣",
+    diamonds: "♦",
+    hearts: "♥",
+    spades: "♠"
+  };
+
+  return symbols[suit];
+}
+
+function pipPositions(rank: Card["rank"]): string[] {
+  const positionsByRank: Record<Card["rank"], string[]> = {
+    A: ["center"],
+    "2": ["top-center", "bottom-center"],
+    "3": ["top-center", "center", "bottom-center"],
+    "4": ["top-left", "top-right", "bottom-left", "bottom-right"],
+    "5": ["top-left", "top-right", "center", "bottom-left", "bottom-right"],
+    "6": ["top-left", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-right"],
+    "7": ["top-left", "top-right", "middle-left", "middle-right", "center", "bottom-left", "bottom-right"],
+    "8": [
+      "top-left",
+      "top-right",
+      "upper-left",
+      "upper-right",
+      "lower-left",
+      "lower-right",
+      "bottom-left",
+      "bottom-right"
+    ],
+    "9": [
+      "top-left",
+      "top-right",
+      "upper-left",
+      "upper-right",
+      "center",
+      "lower-left",
+      "lower-right",
+      "bottom-left",
+      "bottom-right"
+    ],
+    "10": [
+      "top-left",
+      "top-right",
+      "upper-left",
+      "upper-right",
+      "middle-left",
+      "middle-right",
+      "lower-left",
+      "lower-right",
+      "bottom-left",
+      "bottom-right"
+    ],
+    J: [],
+    Q: [],
+    K: []
+  };
+
+  return positionsByRank[rank];
 }
 
 function emitCommand<TPayload>(

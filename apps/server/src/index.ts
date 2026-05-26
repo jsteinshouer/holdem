@@ -3,6 +3,7 @@ import type {
   CreateTablePayload,
   JoinTablePayload,
   ReconnectPlayerPayload,
+  StartHandPayload,
   TableCommandResponse
 } from "@friendly-holdem/shared";
 import { Server } from "socket.io";
@@ -88,6 +89,26 @@ io.on("connection", (socket) => {
       });
     }
   );
+
+  socket.on("hand:start", (payload: StartHandPayload, reply?: (response: TableCommandResponse) => void) => {
+    runTableCommand(reply, () => {
+      const participant = participantBySocket.get(socket.id);
+
+      if (!participant || participant.tableId !== payload.tableId) {
+        throw new Error("Join the table before starting a hand.");
+      }
+
+      const response = tableStore.startHand(payload.tableId, participant.participantId);
+      logger.info("hand started", {
+        tableId: payload.tableId,
+        participantId: participant.participantId,
+        seatedPlayerCount: response.snapshot.seatedPlayerCount,
+        phase: response.snapshot.hand.phase
+      });
+      broadcastSnapshots(payload.tableId);
+      return response;
+    });
+  });
 
   socket.on("disconnect", (reason) => {
     const activeParticipant = participantBySocket.get(socket.id);

@@ -20,15 +20,67 @@ export type ParticipantSummary = {
   isConnected: boolean;
 };
 
+export type CardSuit = "clubs" | "diamonds" | "hearts" | "spades";
+
+export type CardRank =
+  | "2"
+  | "3"
+  | "4"
+  | "5"
+  | "6"
+  | "7"
+  | "8"
+  | "9"
+  | "10"
+  | "J"
+  | "Q"
+  | "K"
+  | "A";
+
+export type Card = {
+  rank: CardRank;
+  suit: CardSuit;
+};
+
 export type SeatSnapshot = {
   seatNumber: number;
-  player: ParticipantSummary | null;
+  player:
+    | (ParticipantSummary & {
+        stack: number;
+        currentBet: number;
+        hasCards: boolean;
+        isButton: boolean;
+        isSmallBlind: boolean;
+        isBigBlind: boolean;
+        isCurrentActor: boolean;
+      })
+    | null;
 };
 
 export type AvailableControls = {
   canStartHand: boolean;
   canDealNextHand: boolean;
   canSeatSpectators: boolean;
+};
+
+export type HandPhase = "waiting" | "preflop" | "flop" | "turn" | "river" | "showdown" | "settled";
+
+export type LegalAction = "fold" | "check" | "call" | "raise" | "all-in";
+
+export type HandSnapshot = {
+  phase: HandPhase;
+  handNumber: number;
+  buttonSeat: number;
+  smallBlindSeat: number;
+  bigBlindSeat: number;
+  board: Card[];
+  pot: number;
+  currentBet: number;
+  callAmount: number;
+  currentActorSeat: number | null;
+  currentActorId: string | null;
+  legalActions: LegalAction[];
+  viewerHoleCards: Card[];
 };
 
 export type TableSnapshot = {
@@ -44,6 +96,7 @@ export type TableSnapshot = {
   seatedPlayerCount: number;
   spectatorCount: number;
   hasHandStarted: boolean;
+  hand: HandSnapshot;
   availableControls: AvailableControls;
   defaults: TableDefaults;
 };
@@ -61,6 +114,10 @@ export type JoinTablePayload = {
 export type ReconnectPlayerPayload = {
   tableId: string;
   sessionToken: string;
+};
+
+export type StartHandPayload = {
+  tableId: string;
 };
 
 export type TableSessionResponse = {
