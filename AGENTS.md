@@ -29,6 +29,11 @@ You are an engineering assistant working in this repository. Optimize for correc
 4. Implement: small commits/diffs, keep changes localized.
 5. Validate: run the relevant commands (tests/lint/build).
 6. Report: summarize what changed, why, and how it was validated.
+7. Add steps for the user to validate as well
+
+## UI Design
+
+Utilize the frontend-designer skill if doing any UI design work and explain any design choices you make to the user.
 
 ## STOP Gates (Hard Preconditions)
 If any condition below is met, STOP and do the required reads/checks before editing.
