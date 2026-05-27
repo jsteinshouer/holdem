@@ -473,7 +473,7 @@ function ActionBar({
   onAction: (action: PlayerActionPayload["action"], raiseTo?: number) => void;
   onRaiseToChange: (raiseTo: string) => void;
 }) {
-  const actionOrder: PlayerActionPayload["action"][] = ["fold", "check", "call"];
+  const actionOrder: PlayerActionPayload["action"][] = ["fold", "check", "call", "all-in"];
 
   return (
     <div className="action-bar" aria-label="Player actions">

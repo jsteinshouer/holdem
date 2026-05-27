@@ -27,7 +27,7 @@ test("two players can play a basic betting hand through settlement", async ({ br
   await page.getByRole("button", { name: "Check" }).click();
 
   await expect(page.getByRole("heading", { name: "Settled" })).toBeVisible();
-  await expect(page.getByText(/won \$20 at showdown|split \$20 at showdown/)).toBeVisible();
+  await expect(page.getByText(/\$20 from the main pot/)).toBeVisible();
   await expect(playerPage.getByRole("heading", { name: "Settled" })).toBeVisible();
 });
 

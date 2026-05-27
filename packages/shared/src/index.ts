@@ -126,7 +126,7 @@ export type StartHandPayload = {
 
 export type PlayerActionPayload = {
   tableId: string;
-  action: Exclude<LegalAction, "all-in">;
+  action: LegalAction;
   raiseTo?: number;
 };
 

@@ -35,6 +35,10 @@ You are an engineering assistant working in this repository. Optimize for correc
 
 Utilize the frontend-designer skill if doing any UI design work and explain any design choices you make to the user.
 
+## Issue handling
+
+Before responding verify that all criteria have been completed in the issues and mark them all done.
+
 ## STOP Gates (Hard Preconditions)
 If any condition below is met, STOP and do the required reads/checks before editing.
 

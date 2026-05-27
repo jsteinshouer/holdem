@@ -34,6 +34,7 @@ type HandParticipantState = {
   totalCommitted: number;
   hasFolded: boolean;
   hasActed: boolean;
+  isAllIn: boolean;
 };
 
 type ActiveHand = {
@@ -48,6 +49,7 @@ type ActiveHand = {
   participants: Map<string, HandParticipantState>;
   pot: number;
   currentBet: number;
+  minimumRaiseIncrement: number;
   actionLog: string[];
   settlementSummary: string | null;
   shouldRevealHoleCards: boolean;
@@ -187,7 +189,7 @@ export function createTableStore(defaults: TableDefaults, origin?: string) {
   function playerAction(
     tableId: string,
     participantId: string,
-    action: "fold" | "check" | "call" | "raise",
+    action: LegalAction,
     raiseTo?: number
   ): TableSessionResponse {
     const table = getExistingTable(tables, tableId);
@@ -314,7 +316,8 @@ function createFirstHand(table: PrivateTable, activePlayers: Participant[]): Act
       currentBet: 0,
       totalCommitted: 0,
       hasFolded: false,
-      hasActed: false
+      hasActed: false,
+      isAllIn: false
     });
   }
 
@@ -340,6 +343,7 @@ function createFirstHand(table: PrivateTable, activePlayers: Participant[]): Act
     participants: handParticipants,
     pot: smallBlindAmount + bigBlindAmount,
     currentBet: Math.max(smallBlindAmount, bigBlindAmount),
+    minimumRaiseIncrement: table.defaults.blinds.bigBlind,
     actionLog: [
       `${smallBlindPlayer.displayName} posted small blind $${smallBlindAmount}.`,
       `${bigBlindPlayer.displayName} posted big blind $${bigBlindAmount}.`
@@ -497,6 +501,7 @@ function postBlind(
   player.stack -= postedAmount;
   handState.currentBet = postedAmount;
   handState.totalCommitted = postedAmount;
+  handState.isAllIn = player.stack === 0;
 
   return postedAmount;
 }
@@ -512,12 +517,12 @@ function applyPlayerAction(
   table: PrivateTable,
   hand: ActiveHand,
   player: Participant,
-  action: "fold" | "check" | "call" | "raise",
+  action: LegalAction,
   raiseTo?: number
 ): void {
   const handState = hand.participants.get(player.id);
 
-  if (!handState || handState.hasFolded) {
+  if (!handState || handState.hasFolded || handState.isAllIn) {
     throw new Error("You are not active in this hand.");
   }
 
@@ -539,20 +544,20 @@ function applyPlayerAction(
       throw new Error("There is no bet to call.");
     }
 
-    if (player.stack < callAmount) {
-      throw new Error("Not enough chips to call.");
-    }
-
-    commitChips(player, handState, callAmount);
-    hand.pot += callAmount;
+    const committed = commitChips(player, handState, Math.min(player.stack, callAmount));
+    hand.pot += committed;
     handState.hasActed = true;
-    hand.actionLog.push(`${player.displayName} called $${callAmount}.`);
-  } else {
+    hand.actionLog.push(
+      committed < callAmount
+        ? `${player.displayName} called all-in for $${committed}.`
+        : `${player.displayName} called $${committed}.`
+    );
+  } else if (action === "raise") {
     if (typeof raiseTo !== "number" || !Number.isInteger(raiseTo)) {
       throw new Error("Raise amount is required.");
     }
 
-    const minimumRaiseTo = hand.currentBet + table.defaults.blinds.bigBlind;
+    const minimumRaiseTo = hand.currentBet + hand.minimumRaiseIncrement;
 
     if (raiseTo < minimumRaiseTo) {
       throw new Error(`Raise must be at least $${minimumRaiseTo}.`);
@@ -568,17 +573,54 @@ function applyPlayerAction(
       throw new Error("Not enough chips to raise.");
     }
 
-    commitChips(player, handState, additionalChips);
-    hand.pot += additionalChips;
+    const previousCurrentBet = hand.currentBet;
+    const committed = commitChips(player, handState, additionalChips);
+    hand.pot += committed;
     hand.currentBet = raiseTo;
+    hand.minimumRaiseIncrement = raiseTo - previousCurrentBet;
 
     for (const otherState of hand.participants.values()) {
-      if (!otherState.hasFolded) {
+      if (!otherState.hasFolded && !otherState.isAllIn) {
         otherState.hasActed = otherState.participantId === player.id;
       }
     }
 
     hand.actionLog.push(`${player.displayName} raised to $${raiseTo}.`);
+  } else {
+    if (player.stack <= 0) {
+      throw new Error("You have no chips to move all-in.");
+    }
+
+    const previousCurrentBet = hand.currentBet;
+    const committed = commitChips(player, handState, player.stack);
+    const newBet = handState.currentBet;
+
+    hand.pot += committed;
+    handState.hasActed = true;
+
+    if (newBet > hand.currentBet) {
+      const raiseIncrement = newBet - hand.currentBet;
+
+      hand.currentBet = newBet;
+
+      if (raiseIncrement >= hand.minimumRaiseIncrement) {
+        hand.minimumRaiseIncrement = raiseIncrement;
+
+        for (const otherState of hand.participants.values()) {
+          if (!otherState.hasFolded && !otherState.isAllIn) {
+            otherState.hasActed = otherState.participantId === player.id;
+          }
+        }
+      } else {
+        handState.hasActed = true;
+      }
+    }
+
+    hand.actionLog.push(
+      newBet > previousCurrentBet
+        ? `${player.displayName} moved all-in for $${newBet}.`
+        : `${player.displayName} called all-in for $${committed}.`
+    );
   }
 
   const remainingStates = activeHandStates(hand);
@@ -593,13 +635,18 @@ function applyPlayerAction(
     return;
   }
 
-  hand.currentActorSeat = nextActiveHandSeat(hand, player.seatNumber ?? 0);
+  hand.currentActorSeat = nextActorSeat(hand, player.seatNumber ?? 0);
 }
 
-function commitChips(player: Participant, handState: HandParticipantState, amount: number): void {
-  player.stack -= amount;
-  handState.currentBet += amount;
-  handState.totalCommitted += amount;
+function commitChips(player: Participant, handState: HandParticipantState, amount: number): number {
+  const committed = Math.min(player.stack, amount);
+
+  player.stack -= committed;
+  handState.currentBet += committed;
+  handState.totalCommitted += committed;
+  handState.isAllIn = player.stack === 0;
+
+  return committed;
 }
 
 function activeHandStates(hand: ActiveHand): HandParticipantState[] {
@@ -609,7 +656,9 @@ function activeHandStates(hand: ActiveHand): HandParticipantState[] {
 }
 
 function isBettingRoundComplete(hand: ActiveHand): boolean {
-  return activeHandStates(hand).every((state) => state.hasActed && state.currentBet === hand.currentBet);
+  return activeHandStates(hand).every(
+    (state) => state.isAllIn || (state.hasActed && state.currentBet === hand.currentBet)
+  );
 }
 
 function advanceBettingRound(table: PrivateTable, hand: ActiveHand): void {
@@ -627,14 +676,21 @@ function advanceBettingRound(table: PrivateTable, hand: ActiveHand): void {
 
   hand.phase = nextPhase;
   hand.currentBet = 0;
+  hand.minimumRaiseIncrement = table.defaults.blinds.bigBlind;
 
   for (const state of hand.participants.values()) {
     state.currentBet = 0;
-    state.hasActed = false;
+    state.hasActed = state.hasFolded || state.isAllIn;
+  }
+
+  hand.actionLog.push(`${formatStreet(nextPhase)} dealt.`);
+
+  if (activeHandStates(hand).filter((state) => !state.isAllIn).length < 2) {
+    advanceBettingRound(table, hand);
+    return;
   }
 
   hand.currentActorSeat = firstPostflopActorSeat(hand);
-  hand.actionLog.push(`${formatStreet(nextPhase)} dealt.`);
 }
 
 function settleFoldWin(table: PrivateTable, hand: ActiveHand, winningState: HandParticipantState | undefined): void {
@@ -653,46 +709,73 @@ function settleFoldWin(table: PrivateTable, hand: ActiveHand, winningState: Hand
 }
 
 function settleShowdown(table: PrivateTable, hand: ActiveHand): void {
-  const contenders = activeHandStates(hand);
-  const rankedHands = contenders.map((state) => ({
-    state,
-    score: simpleHandEvaluator.evaluate([...state.holeCards, ...hand.board])
-  }));
-  const bestScore = rankedHands.reduce((best, ranked) =>
-    compareScores(ranked.score, best.score) > 0 ? ranked : best
-  ).score;
-  const winners = rankedHands.filter((ranked) => compareScores(ranked.score, bestScore) === 0);
-  const baseShare = Math.floor(hand.pot / winners.length);
-  let remainder = hand.pot % winners.length;
+  const rankedHands = new Map(
+    activeHandStates(hand).map((state) => [
+      state.participantId,
+      {
+        state,
+        score: simpleHandEvaluator.evaluate([...state.holeCards, ...hand.board])
+      }
+    ])
+  );
+  const potSummaries: string[] = [];
 
-  for (const winner of winners) {
-    const player = participantById(table, winner.state.participantId);
-    const extraChip = remainder > 0 ? 1 : 0;
+  for (const [index, pot] of buildPots(hand).entries()) {
+    const rankedEligiblePlayers = pot.eligibleParticipantIds
+      .map((participantId) => rankedHands.get(participantId))
+      .filter((ranked): ranked is { state: HandParticipantState; score: HandScore } => Boolean(ranked));
 
-    player.stack += baseShare + extraChip;
-    remainder -= extraChip;
+    if (rankedEligiblePlayers.length === 0) {
+      continue;
+    }
+
+    const bestScore = rankedEligiblePlayers.reduce((best, ranked) =>
+      compareScores(ranked.score, best.score) > 0 ? ranked : best
+    ).score;
+    const winners = rankedEligiblePlayers
+      .filter((ranked) => compareScores(ranked.score, bestScore) === 0)
+      .sort((left, right) => left.state.seatNumber - right.state.seatNumber);
+    const baseShare = Math.floor(pot.amount / winners.length);
+    let remainder = pot.amount % winners.length;
+
+    for (const winner of winners) {
+      const player = participantById(table, winner.state.participantId);
+      const extraChip = remainder > 0 ? 1 : 0;
+
+      player.stack += baseShare + extraChip;
+      remainder -= extraChip;
+    }
+
+    const winnerNames = winners.map((winner) => participantById(table, winner.state.participantId).displayName);
+    const potName = index === 0 ? "main pot" : `side pot ${index}`;
+    const handName = formatHandScore(bestScore);
+
+    potSummaries.push(
+      winners.length === 1
+        ? `${winnerNames[0]} won $${pot.amount} from the ${potName} with ${handName}`
+        : `${winnerNames.join(", ")} split $${pot.amount} from the ${potName} with ${handName}`
+    );
   }
 
   hand.phase = "settled";
   hand.currentActorSeat = null;
   hand.shouldRevealHoleCards = true;
-  hand.settlementSummary =
-    winners.length === 1
-      ? `${participantById(table, winners[0]?.state.participantId ?? "").displayName} won $${hand.pot} at showdown.`
-      : `${winners.map((winner) => participantById(table, winner.state.participantId).displayName).join(", ")} split $${hand.pot} at showdown.`;
+  hand.settlementSummary = `${potSummaries.join(". ")}.`;
   hand.actionLog.push("Showdown.");
   hand.actionLog.push(hand.settlementSummary);
 }
 
 function firstPostflopActorSeat(hand: ActiveHand): number {
-  return nextActiveHandSeat(hand, hand.buttonSeat);
+  return nextActorSeat(hand, hand.buttonSeat);
 }
 
-function nextActiveHandSeat(hand: ActiveHand, afterSeat: number): number {
-  const activeSeats = activeHandStates(hand).map((state) => state.seatNumber);
-  const nextSeat = activeSeats.find((seat) => seat > afterSeat);
+function nextActorSeat(hand: ActiveHand, afterSeat: number): number {
+  const actingSeats = activeHandStates(hand)
+    .filter((state) => !state.isAllIn)
+    .map((state) => state.seatNumber);
+  const nextSeat = actingSeats.find((seat) => seat > afterSeat);
 
-  return nextSeat ?? activeSeats[0] ?? afterSeat;
+  return nextSeat ?? actingSeats[0] ?? afterSeat;
 }
 
 function visibleHoleCardsFor(participant: Participant, table: PrivateTable): Card[] {
@@ -721,6 +804,11 @@ function formatStreet(phase: ActiveHand["phase"]): string {
 }
 
 type HandScore = [number, ...number[]];
+
+type Pot = {
+  amount: number;
+  eligibleParticipantIds: string[];
+};
 
 const simpleHandEvaluator: HandEvaluator = {
   evaluate: evaluateBestHand
@@ -857,12 +945,66 @@ function legalActionsFor(player: Participant, callAmount: number, hand: ActiveHa
   }
 
   const canAddChips = player.stack > 0;
+  const handState = hand.participants.get(player.id);
 
-  if (callAmount > 0) {
-    return canAddChips ? ["fold", "call", "raise"] : ["fold"];
+  if (!handState || handState.isAllIn) {
+    return [];
   }
 
-  return canAddChips ? ["check", "raise"] : ["check"];
+  if (callAmount > 0) {
+    const canRaise =
+      canAddChips &&
+      !handState.hasActed &&
+      player.stack > callAmount &&
+      handState.currentBet + player.stack >= hand.currentBet + hand.minimumRaiseIncrement;
+
+    return canAddChips ? ["fold", "call", ...(canRaise ? (["raise"] as const) : []), "all-in"] : ["fold"];
+  }
+
+  const canRaise = canAddChips && player.stack >= hand.minimumRaiseIncrement;
+
+  return canAddChips ? ["check", ...(canRaise ? (["raise"] as const) : []), "all-in"] : ["check"];
+}
+
+function buildPots(hand: ActiveHand): Pot[] {
+  const committedLevels = [...new Set([...hand.participants.values()].map((state) => state.totalCommitted).filter(Boolean))]
+    .sort((left, right) => left - right);
+  const pots: Pot[] = [];
+  let previousLevel = 0;
+
+  for (const level of committedLevels) {
+    const contributors = [...hand.participants.values()].filter((state) => state.totalCommitted >= level);
+    const amount = (level - previousLevel) * contributors.length;
+
+    if (amount > 0) {
+      pots.push({
+        amount,
+        eligibleParticipantIds: contributors
+          .filter((state) => !state.hasFolded)
+          .map((state) => state.participantId)
+      });
+    }
+
+    previousLevel = level;
+  }
+
+  return pots;
+}
+
+function formatHandScore(score: HandScore): string {
+  const names = [
+    "high card",
+    "one pair",
+    "two pair",
+    "three of a kind",
+    "a straight",
+    "a flush",
+    "a full house",
+    "four of a kind",
+    "a straight flush"
+  ];
+
+  return names[score[0]] ?? "a hand";
 }
 
 function reconnectParticipant(table: PrivateTable, sessionToken: string): Participant | undefined {

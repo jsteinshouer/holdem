@@ -108,7 +108,7 @@ describe("table store", () => {
     expect(response.snapshot.hand.pot).toBe(15);
     expect(response.snapshot.hand.currentBet).toBe(10);
     expect(response.snapshot.hand.callAmount).toBe(5);
-    expect(response.snapshot.hand.legalActions).toEqual(["fold", "call", "raise"]);
+    expect(response.snapshot.hand.legalActions).toEqual(["fold", "call", "raise", "all-in"]);
     expect(response.snapshot.hand.viewerHoleCards).toHaveLength(2);
     expect(hostSeat?.stack).toBe(995);
     expect(hostSeat?.currentBet).toBe(5);
@@ -154,7 +154,7 @@ describe("table store", () => {
     expect(response.snapshot.hand.bigBlindSeat).toBe(2);
     expect(response.snapshot.hand.currentActorSeat).toBe(0);
     expect(response.snapshot.hand.callAmount).toBe(10);
-    expect(response.snapshot.hand.legalActions).toEqual(["fold", "call", "raise"]);
+    expect(response.snapshot.hand.legalActions).toEqual(["fold", "call", "raise", "all-in"]);
   });
 
   it("only exposes a viewer's own hole cards in player-specific snapshots", () => {
@@ -195,7 +195,8 @@ describe("table store", () => {
     expect(callResponse.snapshot.hand.currentActorId).toBe(player.snapshot.viewerParticipantId);
     expect(store.snapshotFor(host.snapshot.tableId, player.snapshot.viewerParticipantId).hand.legalActions).toEqual([
       "check",
-      "raise"
+      "raise",
+      "all-in"
     ]);
 
     const flopResponse = store.playerAction(host.snapshot.tableId, player.snapshot.viewerParticipantId, "check");
@@ -285,14 +286,187 @@ describe("table store", () => {
     const response = store.playerAction(host.snapshot.tableId, host.snapshot.viewerParticipantId, "check");
 
     expect(response.snapshot.hand.phase).toBe("settled");
-    expect(response.snapshot.hand.settlementSummary).toBe("Host won $20 at showdown.");
+    expect(response.snapshot.hand.settlementSummary).toBe("Host won $20 from the main pot with one pair.");
     expect(response.snapshot.seats[0]?.player?.stack).toBe(1010);
     expect(response.snapshot.seats[1]?.player?.stack).toBe(990);
     expect(response.snapshot.seats[0]?.player?.visibleHoleCards).toEqual([card("A", "spades"), card("A", "hearts")]);
     expect(response.snapshot.seats[1]?.player?.visibleHoleCards).toEqual([card("K", "spades"), card("K", "hearts")]);
   });
+
+  it("allows a player to move all-in and auto-runs the board when no more betting is possible", () => {
+    const store = createTableStore({ ...defaults, startingStack: 20 });
+    const host = store.createTable("Host");
+    const player = store.joinTable(host.snapshot.tableId, "Grace");
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    const privateTable = store.getTable(host.snapshot.tableId);
+    const hand = privateTable?.hand;
+
+    if (!hand) {
+      throw new Error("Expected an active hand.");
+    }
+
+    hand.participants.get(host.snapshot.viewerParticipantId)!.holeCards = [card("A", "spades"), card("A", "hearts")];
+    hand.participants.get(player.snapshot.viewerParticipantId)!.holeCards = [card("K", "spades"), card("K", "hearts")];
+    hand.deck = boardDeck();
+
+    store.playerAction(host.snapshot.tableId, host.snapshot.viewerParticipantId, "all-in");
+    const response = store.playerAction(host.snapshot.tableId, player.snapshot.viewerParticipantId, "call");
+
+    expect(response.snapshot.hand.phase).toBe("settled");
+    expect(response.snapshot.hand.pot).toBe(40);
+    expect(response.snapshot.hand.board).toHaveLength(5);
+    expect(response.snapshot.hand.actionLog).toContain("Host moved all-in for $20.");
+    expect(response.snapshot.hand.settlementSummary).toBe("Host won $40 from the main pot with one pair.");
+    expect(response.snapshot.seats[0]?.player?.stack).toBe(40);
+    expect(response.snapshot.seats[1]?.player?.stack).toBe(0);
+  });
+
+  it("creates and settles side pots only among eligible players", () => {
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    const grace = store.joinTable(host.snapshot.tableId, "Grace");
+    const linus = store.joinTable(host.snapshot.tableId, "Linus");
+    const privateTable = store.getTable(host.snapshot.tableId);
+
+    privateTable!.participants.get(host.snapshot.viewerParticipantId)!.stack = 100;
+    privateTable!.participants.get(grace.snapshot.viewerParticipantId)!.stack = 300;
+    privateTable!.participants.get(linus.snapshot.viewerParticipantId)!.stack = 1000;
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    const hand = privateTable?.hand;
+
+    if (!hand) {
+      throw new Error("Expected an active hand.");
+    }
+
+    hand.participants.get(host.snapshot.viewerParticipantId)!.holeCards = [card("A", "spades"), card("A", "hearts")];
+    hand.participants.get(grace.snapshot.viewerParticipantId)!.holeCards = [card("Q", "spades"), card("Q", "hearts")];
+    hand.participants.get(linus.snapshot.viewerParticipantId)!.holeCards = [card("K", "spades"), card("K", "hearts")];
+    hand.deck = boardDeck();
+
+    store.playerAction(host.snapshot.tableId, host.snapshot.viewerParticipantId, "all-in");
+    store.playerAction(host.snapshot.tableId, grace.snapshot.viewerParticipantId, "call");
+    store.playerAction(host.snapshot.tableId, linus.snapshot.viewerParticipantId, "raise", 300);
+    const response = store.playerAction(host.snapshot.tableId, grace.snapshot.viewerParticipantId, "call");
+
+    expect(response.snapshot.hand.phase).toBe("settled");
+    expect(response.snapshot.hand.pot).toBe(700);
+    expect(response.snapshot.hand.settlementSummary).toBe(
+      "Host won $300 from the main pot with one pair. Linus won $400 from the side pot 1 with one pair."
+    );
+    expect(response.snapshot.seats[0]?.player?.stack).toBe(300);
+    expect(response.snapshot.seats[1]?.player?.stack).toBe(0);
+    expect(response.snapshot.seats[2]?.player?.stack).toBe(1100);
+  });
+
+  it("splits pots deterministically and awards odd chips by seat order", () => {
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    const grace = store.joinTable(host.snapshot.tableId, "Grace");
+    const linus = store.joinTable(host.snapshot.tableId, "Linus");
+    const privateTable = store.getTable(host.snapshot.tableId);
+
+    privateTable!.participants.get(host.snapshot.viewerParticipantId)!.stack = 101;
+    privateTable!.participants.get(grace.snapshot.viewerParticipantId)!.stack = 101;
+    privateTable!.participants.get(linus.snapshot.viewerParticipantId)!.stack = 300;
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    const hand = privateTable?.hand;
+
+    if (!hand) {
+      throw new Error("Expected an active hand.");
+    }
+
+    hand.participants.get(host.snapshot.viewerParticipantId)!.holeCards = [card("A", "spades"), card("5", "hearts")];
+    hand.participants.get(grace.snapshot.viewerParticipantId)!.holeCards = [card("A", "clubs"), card("5", "diamonds")];
+    hand.participants.get(linus.snapshot.viewerParticipantId)!.holeCards = [card("K", "spades"), card("Q", "hearts")];
+    hand.deck = boardDeck();
+
+    store.playerAction(host.snapshot.tableId, host.snapshot.viewerParticipantId, "all-in");
+    store.playerAction(host.snapshot.tableId, grace.snapshot.viewerParticipantId, "call");
+    const response = store.playerAction(host.snapshot.tableId, linus.snapshot.viewerParticipantId, "all-in");
+
+    expect(response.snapshot.hand.settlementSummary).toBe(
+      "Host, Grace split $303 from the main pot with one pair. Linus won $199 from the side pot 1 with high card."
+    );
+    expect(response.snapshot.seats[0]?.player?.stack).toBe(152);
+    expect(response.snapshot.seats[1]?.player?.stack).toBe(151);
+    expect(response.snapshot.seats[2]?.player?.stack).toBe(199);
+  });
+
+  it("enforces minimum raises", () => {
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    store.joinTable(host.snapshot.tableId, "Grace");
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(() => store.playerAction(host.snapshot.tableId, host.snapshot.viewerParticipantId, "raise", 15)).toThrow(
+      "Raise must be at least $20."
+    );
+  });
+
+  it("does not reopen raises after a short all-in raise", () => {
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    const grace = store.joinTable(host.snapshot.tableId, "Grace");
+    const linus = store.joinTable(host.snapshot.tableId, "Linus");
+    const privateTable = store.getTable(host.snapshot.tableId);
+
+    privateTable!.participants.get(linus.snapshot.viewerParticipantId)!.stack = 15;
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    store.playerAction(host.snapshot.tableId, host.snapshot.viewerParticipantId, "call");
+    store.playerAction(host.snapshot.tableId, grace.snapshot.viewerParticipantId, "call");
+    store.playerAction(host.snapshot.tableId, linus.snapshot.viewerParticipantId, "all-in");
+
+    const hostSnapshot = store.snapshotFor(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(hostSnapshot.hand.currentActorId).toBe(host.snapshot.viewerParticipantId);
+    expect(hostSnapshot.hand.callAmount).toBe(5);
+    expect(hostSnapshot.hand.legalActions).toEqual(["fold", "call", "all-in"]);
+  });
+
+  it("keeps folded cards hidden while revealing showdown-eligible hands", () => {
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    const grace = store.joinTable(host.snapshot.tableId, "Grace");
+    const linus = store.joinTable(host.snapshot.tableId, "Linus");
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    const privateTable = store.getTable(host.snapshot.tableId);
+    const hand = privateTable?.hand;
+
+    if (!hand) {
+      throw new Error("Expected an active hand.");
+    }
+
+    hand.participants.get(grace.snapshot.viewerParticipantId)!.holeCards = [card("A", "spades"), card("A", "hearts")];
+    hand.participants.get(linus.snapshot.viewerParticipantId)!.holeCards = [card("K", "spades"), card("K", "hearts")];
+    hand.deck = boardDeck();
+
+    store.playerAction(host.snapshot.tableId, host.snapshot.viewerParticipantId, "fold");
+    store.playerAction(host.snapshot.tableId, grace.snapshot.viewerParticipantId, "call");
+    store.playerAction(host.snapshot.tableId, linus.snapshot.viewerParticipantId, "check");
+    store.playerAction(host.snapshot.tableId, grace.snapshot.viewerParticipantId, "check");
+    store.playerAction(host.snapshot.tableId, linus.snapshot.viewerParticipantId, "check");
+    store.playerAction(host.snapshot.tableId, grace.snapshot.viewerParticipantId, "check");
+    store.playerAction(host.snapshot.tableId, linus.snapshot.viewerParticipantId, "check");
+    store.playerAction(host.snapshot.tableId, grace.snapshot.viewerParticipantId, "check");
+    const response = store.playerAction(host.snapshot.tableId, linus.snapshot.viewerParticipantId, "check");
+
+    expect(response.snapshot.hand.phase).toBe("settled");
+    expect(response.snapshot.seats[0]?.player?.visibleHoleCards).toEqual([]);
+    expect(response.snapshot.seats[1]?.player?.visibleHoleCards).toEqual([card("A", "spades"), card("A", "hearts")]);
+    expect(response.snapshot.seats[2]?.player?.visibleHoleCards).toEqual([card("K", "spades"), card("K", "hearts")]);
+  });
 });
 
 function card(rank: Card["rank"], suit: Card["suit"]): Card {
   return { rank, suit };
+}
+
+function boardDeck(): Card[] {
+  return [card("8", "clubs"), card("7", "diamonds"), card("5", "hearts"), card("3", "clubs"), card("2", "diamonds")];
 }
