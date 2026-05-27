@@ -23,6 +23,7 @@ export type Participant = {
   kind: ParticipantKind;
   seatNumber: number | null;
   stack: number;
+  isSittingOut: boolean;
   isConnected: boolean;
 };
 
@@ -176,8 +177,34 @@ export function createTableStore(defaults: TableDefaults, origin?: string) {
       throw new Error("At least two seated players are required to start a hand.");
     }
 
-    table.hand = createFirstHand(table, activePlayers);
+    table.hand = createHand(table, activePlayers, null);
     table.hasHandStarted = true;
+
+    return {
+      ok: true,
+      sessionToken: participant.sessionToken,
+      snapshot: createSnapshot(table, participant.id, origin)
+    };
+  }
+
+  function dealNextHand(tableId: string, participantId: string): TableSessionResponse {
+    const table = getExistingTable(tables, tableId);
+    const participant = requireParticipant(table, participantId);
+
+    requireHost(table, participant);
+
+    if (!table.hand || table.hand.phase !== "settled") {
+      throw new Error("The next hand can only be dealt after settlement.");
+    }
+
+    markBustedPlayersSittingOut(table);
+    const activePlayers = seatedPlayers(table);
+
+    if (activePlayers.length < 2) {
+      throw new Error("At least two active seated players are required to deal the next hand.");
+    }
+
+    table.hand = createHand(table, activePlayers, table.hand);
 
     return {
       ok: true,
@@ -217,6 +244,129 @@ export function createTableStore(defaults: TableDefaults, origin?: string) {
     };
   }
 
+  function sitOut(tableId: string, participantId: string): TableSessionResponse {
+    const table = getExistingTable(tables, tableId);
+    const participant = requireParticipant(table, participantId);
+
+    requireBetweenHands(table);
+
+    if (participant.kind !== "player" || participant.seatNumber === null) {
+      throw new Error("Only seated players can sit out.");
+    }
+
+    participant.isSittingOut = true;
+
+    return {
+      ok: true,
+      sessionToken: participant.sessionToken,
+      snapshot: createSnapshot(table, participant.id, origin)
+    };
+  }
+
+  function rejoin(tableId: string, participantId: string): TableSessionResponse {
+    const table = getExistingTable(tables, tableId);
+    const participant = requireParticipant(table, participantId);
+
+    requireBetweenHands(table);
+
+    if (participant.kind !== "player" || participant.seatNumber === null) {
+      throw new Error("Only seated players can rejoin.");
+    }
+
+    if (participant.stack <= 0) {
+      throw new Error("A busted player needs a rebuy before rejoining.");
+    }
+
+    participant.isSittingOut = false;
+
+    return {
+      ok: true,
+      sessionToken: participant.sessionToken,
+      snapshot: createSnapshot(table, participant.id, origin)
+    };
+  }
+
+  function approveRebuy(tableId: string, hostParticipantId: string, targetParticipantId: string): TableSessionResponse {
+    const table = getExistingTable(tables, tableId);
+    const host = requireParticipant(table, hostParticipantId);
+    const target = requireParticipant(table, targetParticipantId);
+
+    requireHost(table, host);
+    requireBetweenHands(table);
+
+    if (target.kind !== "player" || target.seatNumber === null) {
+      throw new Error("Only seated players can receive a rebuy.");
+    }
+
+    if (target.stack > 0 && !target.isSittingOut) {
+      throw new Error("Only busted or sitting-out players can receive a rebuy.");
+    }
+
+    target.stack = table.defaults.startingStack;
+    target.isSittingOut = false;
+
+    return {
+      ok: true,
+      sessionToken: host.sessionToken,
+      snapshot: createSnapshot(table, host.id, origin)
+    };
+  }
+
+  function seatSpectator(tableId: string, hostParticipantId: string, spectatorId: string): TableSessionResponse {
+    const table = getExistingTable(tables, tableId);
+    const host = requireParticipant(table, hostParticipantId);
+    const spectator = requireParticipant(table, spectatorId);
+    const seatNumber = nextOpenSeat(table);
+
+    requireHost(table, host);
+    requireBetweenHands(table);
+
+    if (spectator.kind !== "spectator") {
+      throw new Error("Only spectators can be seated.");
+    }
+
+    if (seatNumber === null) {
+      throw new Error("No open seats are available.");
+    }
+
+    spectator.kind = "player";
+    spectator.seatNumber = seatNumber;
+    spectator.stack = table.defaults.startingStack;
+    spectator.isSittingOut = false;
+
+    return {
+      ok: true,
+      sessionToken: host.sessionToken,
+      snapshot: createSnapshot(table, host.id, origin)
+    };
+  }
+
+  function removePlayer(tableId: string, hostParticipantId: string, targetParticipantId: string): TableSessionResponse {
+    const table = getExistingTable(tables, tableId);
+    const host = requireParticipant(table, hostParticipantId);
+    const target = requireParticipant(table, targetParticipantId);
+
+    requireHost(table, host);
+    requireBetweenHands(table);
+
+    if (target.id === table.hostId) {
+      throw new Error("The host cannot be removed.");
+    }
+
+    if (target.kind !== "player" || target.seatNumber === null || target.isConnected) {
+      throw new Error("Only inactive seated players can be removed.");
+    }
+
+    table.participants.delete(target.id);
+    table.participantIdsByToken.delete(target.sessionToken);
+
+    return {
+      ok: true,
+      sessionToken: host.sessionToken,
+      snapshot: createSnapshot(table, host.id, origin)
+    };
+  }
+
   function getTable(tableId: string): PrivateTable | undefined {
     return tables.get(tableId);
   }
@@ -228,7 +378,13 @@ export function createTableStore(defaults: TableDefaults, origin?: string) {
     disconnectParticipant,
     snapshotFor,
     startHand,
+    dealNextHand,
     playerAction,
+    sitOut,
+    rejoin,
+    approveRebuy,
+    seatSpectator,
+    removePlayer,
     getTable
   };
 }
@@ -246,6 +402,7 @@ function createParticipant(
     kind,
     seatNumber,
     stack,
+    isSittingOut: false,
     isConnected: true
   };
 }
@@ -291,17 +448,29 @@ function createSnapshot(table: PrivateTable, viewerParticipantId: string, origin
     hand: createHandSnapshot(table, viewer),
     availableControls: {
       canStartHand: viewer.id === table.hostId && !table.hand && seats.filter((seat) => seat.player).length >= 2,
-      canDealNextHand: false,
+      canDealNextHand:
+        viewer.id === table.hostId && table.hand?.phase === "settled" && seatedPlayers(table).length >= 2,
       canSeatSpectators:
-        viewer.id === table.hostId && !table.hasHandStarted && spectators.length > 0 && nextOpenSeat(table) !== null
+        viewer.id === table.hostId && isBetweenHands(table) && spectators.length > 0 && nextOpenSeat(table) !== null,
+      canSitOut:
+        viewer.kind === "player" &&
+        viewer.seatNumber !== null &&
+        !viewer.isSittingOut &&
+        isBetweenHands(table),
+      canRejoin:
+        viewer.kind === "player" &&
+        viewer.seatNumber !== null &&
+        viewer.isSittingOut &&
+        viewer.stack > 0 &&
+        isBetweenHands(table)
     },
     defaults: table.defaults
   };
 }
 
-function createFirstHand(table: PrivateTable, activePlayers: Participant[]): ActiveHand {
+function createHand(table: PrivateTable, activePlayers: Participant[], previousHand: ActiveHand | null): ActiveHand {
   const deck = shuffleDeck(createDeck());
-  const buttonSeat = activePlayers[0]?.seatNumber ?? 0;
+  const buttonSeat = previousHand ? nextActiveSeat(activePlayers, previousHand.buttonSeat) : activePlayers[0]?.seatNumber ?? 0;
   const smallBlindSeat = activePlayers.length === 2 ? buttonSeat : nextActiveSeat(activePlayers, buttonSeat);
   const bigBlindSeat = nextActiveSeat(activePlayers, smallBlindSeat);
   const currentActorSeat = nextActiveSeat(activePlayers, bigBlindSeat);
@@ -332,7 +501,7 @@ function createFirstHand(table: PrivateTable, activePlayers: Participant[]): Act
   const bigBlindAmount = postBlind(bigBlindPlayer, handParticipants, table.defaults.blinds.bigBlind);
 
   return {
-    handNumber: 1,
+    handNumber: previousHand ? previousHand.handNumber + 1 : 1,
     phase: "preflop",
     deck,
     board: [],
@@ -412,6 +581,8 @@ function summarizeSeatPlayer(participant: Participant, table: PrivateTable) {
     currentBet: handState?.currentBet ?? 0,
     hasCards: Boolean(handState),
     hasFolded: handState?.hasFolded ?? false,
+    isSittingOut: participant.isSittingOut,
+    isBusted: participant.stack <= 0,
     visibleHoleCards: visibleHoleCardsFor(participant, table),
     isButton: hand?.buttonSeat === seatNumber,
     isSmallBlind: hand?.smallBlindSeat === seatNumber,
@@ -431,7 +602,13 @@ function summarizeParticipant(participant: Participant, hostId: string) {
 
 function seatedPlayers(table: PrivateTable): Participant[] {
   return [...table.participants.values()]
-    .filter((participant) => participant.kind === "player" && participant.seatNumber !== null && participant.stack > 0)
+    .filter(
+      (participant) =>
+        participant.kind === "player" &&
+        participant.seatNumber !== null &&
+        participant.stack > 0 &&
+        !participant.isSittingOut
+    )
     .sort((left, right) => (left.seatNumber ?? 0) - (right.seatNumber ?? 0));
 }
 
@@ -706,6 +883,7 @@ function settleFoldWin(table: PrivateTable, hand: ActiveHand, winningState: Hand
   hand.shouldRevealHoleCards = false;
   hand.settlementSummary = `${winner.displayName} won $${hand.pot} after everyone else folded.`;
   hand.actionLog.push(hand.settlementSummary);
+  markBustedPlayersSittingOut(table);
 }
 
 function settleShowdown(table: PrivateTable, hand: ActiveHand): void {
@@ -763,6 +941,7 @@ function settleShowdown(table: PrivateTable, hand: ActiveHand): void {
   hand.settlementSummary = `${potSummaries.join(". ")}.`;
   hand.actionLog.push("Showdown.");
   hand.actionLog.push(hand.settlementSummary);
+  markBustedPlayersSittingOut(table);
 }
 
 function firstPostflopActorSeat(hand: ActiveHand): number {
@@ -797,6 +976,34 @@ function participantById(table: PrivateTable, participantId: string): Participan
   }
 
   return participant;
+}
+
+function requireParticipant(table: PrivateTable, participantId: string): Participant {
+  return participantById(table, participantId);
+}
+
+function requireHost(table: PrivateTable, participant: Participant): void {
+  if (participant.id !== table.hostId) {
+    throw new Error("Only the host can use this control.");
+  }
+}
+
+function requireBetweenHands(table: PrivateTable): void {
+  if (!isBetweenHands(table)) {
+    throw new Error("This control is only available between hands.");
+  }
+}
+
+function isBetweenHands(table: PrivateTable): boolean {
+  return !table.hand || table.hand.phase === "settled";
+}
+
+function markBustedPlayersSittingOut(table: PrivateTable): void {
+  for (const participant of table.participants.values()) {
+    if (participant.kind === "player" && participant.seatNumber !== null && participant.stack <= 0) {
+      participant.isSittingOut = true;
+    }
+  }
 }
 
 function formatStreet(phase: ActiveHand["phase"]): string {

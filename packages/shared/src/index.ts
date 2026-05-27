@@ -50,6 +50,8 @@ export type SeatSnapshot = {
         currentBet: number;
         hasCards: boolean;
         hasFolded: boolean;
+        isSittingOut: boolean;
+        isBusted: boolean;
         visibleHoleCards: Card[];
         isButton: boolean;
         isSmallBlind: boolean;
@@ -63,6 +65,8 @@ export type AvailableControls = {
   canStartHand: boolean;
   canDealNextHand: boolean;
   canSeatSpectators: boolean;
+  canSitOut: boolean;
+  canRejoin: boolean;
 };
 
 export type HandPhase = "waiting" | "preflop" | "flop" | "turn" | "river" | "showdown" | "settled";
@@ -124,10 +128,37 @@ export type StartHandPayload = {
   tableId: string;
 };
 
+export type DealNextHandPayload = {
+  tableId: string;
+};
+
 export type PlayerActionPayload = {
   tableId: string;
   action: LegalAction;
   raiseTo?: number;
+};
+
+export type SitOutPayload = {
+  tableId: string;
+};
+
+export type RejoinPayload = {
+  tableId: string;
+};
+
+export type ApproveRebuyPayload = {
+  tableId: string;
+  participantId: string;
+};
+
+export type SeatSpectatorPayload = {
+  tableId: string;
+  participantId: string;
+};
+
+export type RemovePlayerPayload = {
+  tableId: string;
+  participantId: string;
 };
 
 export type TableSessionResponse = {

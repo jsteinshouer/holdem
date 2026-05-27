@@ -631,6 +631,39 @@ dd {
   margin-top: 18px;
 }
 
+.host-controls {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid rgb(245 234 210 / 14%);
+}
+
+.host-controls h3 {
+  margin: 0 0 10px;
+  color: #fce6a1;
+  font-size: 1rem;
+}
+
+.host-controls > div {
+  display: grid;
+  gap: 8px;
+}
+
+.host-controls__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.host-controls__row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: rgb(245 234 210 / 72%);
+  font-weight: 800;
+}
+
 @media (max-width: 800px) {
   .room-board__masthead,
   .table-summary,
@@ -655,7 +688,8 @@ dd {
   .seat-grid,
   .table-metrics,
   .action-bar,
-  .raise-control {
+  .raise-control,
+  .host-controls__row {
     grid-template-columns: 1fr;
   }
 }

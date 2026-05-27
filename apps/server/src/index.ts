@@ -1,9 +1,15 @@
 import { createServer } from "node:http";
 import type {
+  ApproveRebuyPayload,
   CreateTablePayload,
+  DealNextHandPayload,
   JoinTablePayload,
   PlayerActionPayload,
   ReconnectPlayerPayload,
+  RejoinPayload,
+  RemovePlayerPayload,
+  SeatSpectatorPayload,
+  SitOutPayload,
   StartHandPayload,
   TableCommandResponse
 } from "@friendly-holdem/shared";
@@ -111,6 +117,26 @@ io.on("connection", (socket) => {
     });
   });
 
+  socket.on("hand:next", (payload: DealNextHandPayload, reply?: (response: TableCommandResponse) => void) => {
+    runTableCommand(reply, () => {
+      const participant = participantBySocket.get(socket.id);
+
+      if (!participant || participant.tableId !== payload.tableId) {
+        throw new Error("Join the table before dealing the next hand.");
+      }
+
+      const response = tableStore.dealNextHand(payload.tableId, participant.participantId);
+      logger.info("next hand dealt", {
+        tableId: payload.tableId,
+        participantId: participant.participantId,
+        handNumber: response.snapshot.hand.handNumber,
+        phase: response.snapshot.hand.phase
+      });
+      broadcastSnapshots(payload.tableId);
+      return response;
+    });
+  });
+
   socket.on("player:action", (payload: PlayerActionPayload, reply?: (response: TableCommandResponse) => void) => {
     runTableCommand(reply, () => {
       const participant = participantBySocket.get(socket.id);
@@ -130,6 +156,86 @@ io.on("connection", (socket) => {
         participantId: participant.participantId,
         action: payload.action,
         phase: response.snapshot.hand.phase
+      });
+      broadcastSnapshots(payload.tableId);
+      return response;
+    });
+  });
+
+  socket.on("player:sitOut", (payload: SitOutPayload, reply?: (response: TableCommandResponse) => void) => {
+    runTableCommand(reply, () => {
+      const participant = participantBySocket.get(socket.id);
+
+      if (!participant || participant.tableId !== payload.tableId) {
+        throw new Error("Join the table before sitting out.");
+      }
+
+      const response = tableStore.sitOut(payload.tableId, participant.participantId);
+      broadcastSnapshots(payload.tableId);
+      return response;
+    });
+  });
+
+  socket.on("player:rejoin", (payload: RejoinPayload, reply?: (response: TableCommandResponse) => void) => {
+    runTableCommand(reply, () => {
+      const participant = participantBySocket.get(socket.id);
+
+      if (!participant || participant.tableId !== payload.tableId) {
+        throw new Error("Join the table before rejoining.");
+      }
+
+      const response = tableStore.rejoin(payload.tableId, participant.participantId);
+      broadcastSnapshots(payload.tableId);
+      return response;
+    });
+  });
+
+  socket.on("host:approveRebuy", (payload: ApproveRebuyPayload, reply?: (response: TableCommandResponse) => void) => {
+    runTableCommand(reply, () => {
+      const participant = participantBySocket.get(socket.id);
+
+      if (!participant || participant.tableId !== payload.tableId) {
+        throw new Error("Join the table before approving a rebuy.");
+      }
+
+      const response = tableStore.approveRebuy(payload.tableId, participant.participantId, payload.participantId);
+      logger.info("rebuy approved", {
+        tableId: payload.tableId,
+        hostId: participant.participantId,
+        participantId: payload.participantId
+      });
+      broadcastSnapshots(payload.tableId);
+      return response;
+    });
+  });
+
+  socket.on("host:seatSpectator", (payload: SeatSpectatorPayload, reply?: (response: TableCommandResponse) => void) => {
+    runTableCommand(reply, () => {
+      const participant = participantBySocket.get(socket.id);
+
+      if (!participant || participant.tableId !== payload.tableId) {
+        throw new Error("Join the table before seating a spectator.");
+      }
+
+      const response = tableStore.seatSpectator(payload.tableId, participant.participantId, payload.participantId);
+      broadcastSnapshots(payload.tableId);
+      return response;
+    });
+  });
+
+  socket.on("host:removePlayer", (payload: RemovePlayerPayload, reply?: (response: TableCommandResponse) => void) => {
+    runTableCommand(reply, () => {
+      const participant = participantBySocket.get(socket.id);
+
+      if (!participant || participant.tableId !== payload.tableId) {
+        throw new Error("Join the table before removing a player.");
+      }
+
+      const response = tableStore.removePlayer(payload.tableId, participant.participantId, payload.participantId);
+      logger.info("inactive player removed", {
+        tableId: payload.tableId,
+        hostId: participant.participantId,
+        participantId: payload.participantId
       });
       broadcastSnapshots(payload.tableId);
       return response;

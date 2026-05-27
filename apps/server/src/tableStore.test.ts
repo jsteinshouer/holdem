@@ -461,6 +461,143 @@ describe("table store", () => {
     expect(response.snapshot.seats[1]?.player?.visibleHoleCards).toEqual([card("A", "spades"), card("A", "hearts")]);
     expect(response.snapshot.seats[2]?.player?.visibleHoleCards).toEqual([card("K", "spades"), card("K", "hearts")]);
   });
+
+  it("lets only the host deal the next hand while stacks carry forward and blinds rotate", () => {
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    const player = store.joinTable(host.snapshot.tableId, "Grace");
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    store.playerAction(host.snapshot.tableId, host.snapshot.viewerParticipantId, "fold");
+
+    expect(() => store.dealNextHand(host.snapshot.tableId, player.snapshot.viewerParticipantId)).toThrow(
+      "Only the host can use this control."
+    );
+
+    const response = store.dealNextHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(response.snapshot.hand.handNumber).toBe(2);
+    expect(response.snapshot.hand.phase).toBe("preflop");
+    expect(response.snapshot.hand.buttonSeat).toBe(1);
+    expect(response.snapshot.hand.smallBlindSeat).toBe(1);
+    expect(response.snapshot.hand.bigBlindSeat).toBe(0);
+    expect(response.snapshot.hand.currentActorSeat).toBe(1);
+    expect(response.snapshot.seats[0]?.player?.stack).toBe(985);
+    expect(response.snapshot.seats[1]?.player?.stack).toBe(1000);
+  });
+
+  it("allows sit out and rejoin only between hands and skips sitting-out players", () => {
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    const grace = store.joinTable(host.snapshot.tableId, "Grace");
+    const linus = store.joinTable(host.snapshot.tableId, "Linus");
+
+    const sitOut = store.sitOut(host.snapshot.tableId, grace.snapshot.viewerParticipantId);
+
+    expect(sitOut.snapshot.seats[1]?.player?.isSittingOut).toBe(true);
+
+    const start = store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(start.snapshot.seats[1]?.player?.hasCards).toBe(false);
+    expect(start.snapshot.hand.smallBlindSeat).toBe(0);
+    expect(start.snapshot.hand.bigBlindSeat).toBe(2);
+    expect(() => store.rejoin(host.snapshot.tableId, grace.snapshot.viewerParticipantId)).toThrow(
+      "This control is only available between hands."
+    );
+
+    store.playerAction(host.snapshot.tableId, host.snapshot.viewerParticipantId, "fold");
+    const rejoin = store.rejoin(host.snapshot.tableId, grace.snapshot.viewerParticipantId);
+    const nextHand = store.dealNextHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(rejoin.snapshot.seats[1]?.player?.isSittingOut).toBe(false);
+    expect(nextHand.snapshot.seats[1]?.player?.hasCards).toBe(true);
+    expect(nextHand.snapshot.seatedPlayerCount).toBe(3);
+    expect(linus.snapshot.viewerParticipantId).toHaveLength(22);
+  });
+
+  it("marks busted players sitting out and lets the host approve a rebuy between hands", () => {
+    const store = createTableStore({ ...defaults, startingStack: 20 });
+    const host = store.createTable("Host");
+    const player = store.joinTable(host.snapshot.tableId, "Grace");
+    const privateTable = store.getTable(host.snapshot.tableId);
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    const hand = privateTable?.hand;
+
+    if (!hand) {
+      throw new Error("Expected an active hand.");
+    }
+
+    hand.participants.get(host.snapshot.viewerParticipantId)!.holeCards = [card("A", "spades"), card("A", "hearts")];
+    hand.participants.get(player.snapshot.viewerParticipantId)!.holeCards = [card("K", "spades"), card("K", "hearts")];
+    hand.deck = boardDeck();
+
+    store.playerAction(host.snapshot.tableId, host.snapshot.viewerParticipantId, "all-in");
+    const settled = store.playerAction(host.snapshot.tableId, player.snapshot.viewerParticipantId, "call");
+
+    expect(settled.snapshot.seats[1]?.player?.stack).toBe(0);
+    expect(settled.snapshot.seats[1]?.player?.isBusted).toBe(true);
+    expect(settled.snapshot.seats[1]?.player?.isSittingOut).toBe(true);
+    expect(() => store.dealNextHand(host.snapshot.tableId, host.snapshot.viewerParticipantId)).toThrow(
+      "At least two active seated players are required to deal the next hand."
+    );
+
+    const rebuy = store.approveRebuy(
+      host.snapshot.tableId,
+      host.snapshot.viewerParticipantId,
+      player.snapshot.viewerParticipantId
+    );
+
+    expect(rebuy.snapshot.seats[1]?.player?.stack).toBe(20);
+    expect(rebuy.snapshot.seats[1]?.player?.isSittingOut).toBe(false);
+    expect(store.dealNextHand(host.snapshot.tableId, host.snapshot.viewerParticipantId).snapshot.hand.handNumber).toBe(2);
+  });
+
+  it("lets the host seat spectators and remove inactive players between hands", () => {
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    const player = store.joinTable(host.snapshot.tableId, "Grace");
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    const spectator = store.joinTable(host.snapshot.tableId, "Watcher");
+
+    store.playerAction(host.snapshot.tableId, host.snapshot.viewerParticipantId, "fold");
+
+    const seated = store.seatSpectator(
+      host.snapshot.tableId,
+      host.snapshot.viewerParticipantId,
+      spectator.snapshot.viewerParticipantId
+    );
+
+    expect(seated.snapshot.spectatorCount).toBe(0);
+    expect(seated.snapshot.seats[2]?.player?.displayName).toBe("Watcher");
+
+    store.disconnectParticipant(host.snapshot.tableId, player.snapshot.viewerParticipantId);
+
+    const removed = store.removePlayer(host.snapshot.tableId, host.snapshot.viewerParticipantId, player.snapshot.viewerParticipantId);
+
+    expect(removed.snapshot.seatedPlayerCount).toBe(2);
+    expect(removed.snapshot.seats[1]?.player).toBeNull();
+  });
+
+  it("rejects between-hand host controls during an active hand without mutating state", () => {
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    const player = store.joinTable(host.snapshot.tableId, "Grace");
+    const spectator = store.joinTable(host.snapshot.tableId, "Watcher");
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    const before = store.snapshotFor(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(() =>
+      store.approveRebuy(host.snapshot.tableId, host.snapshot.viewerParticipantId, player.snapshot.viewerParticipantId)
+    ).toThrow("This control is only available between hands.");
+    expect(() =>
+      store.seatSpectator(host.snapshot.tableId, host.snapshot.viewerParticipantId, spectator.snapshot.viewerParticipantId)
+    ).toThrow("This control is only available between hands.");
+    expect(store.snapshotFor(host.snapshot.tableId, host.snapshot.viewerParticipantId)).toEqual(before);
+  });
 });
 
 function card(rank: Card["rank"], suit: Card["suit"]): Card {

@@ -2,11 +2,17 @@ import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { io, type Socket } from "socket.io-client";
 import type {
+  ApproveRebuyPayload,
   Card,
   CreateTablePayload,
+  DealNextHandPayload,
   JoinTablePayload,
   LegalAction,
   PlayerActionPayload,
+  RejoinPayload,
+  RemovePlayerPayload,
+  SeatSpectatorPayload,
+  SitOutPayload,
   StartHandPayload,
   TableCommandResponse,
   TableSnapshot
@@ -142,6 +148,21 @@ function App() {
     }
   }
 
+  async function tableCommand<TPayload>(eventName: string, payload: TPayload, fallbackMessage: string) {
+    if (!socket) {
+      return;
+    }
+
+    setError(null);
+
+    try {
+      const response = await emitCommand<TPayload>(socket, eventName, payload);
+      handleSessionResponse(response);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : fallbackMessage);
+    }
+  }
+
   function handleSessionResponse(response: TableCommandResponse): TableSnapshot {
     if (!response.ok) {
       throw new Error(response.reason);
@@ -174,6 +195,7 @@ function App() {
             inviteLink={inviteLink}
             snapshot={snapshot}
             onPlayerAction={playerAction}
+            onTableCommand={tableCommand}
             onStartHand={startHand}
           />
         ) : tableIdFromUrl ? (
@@ -272,12 +294,14 @@ function TableRoom({
   snapshot,
   inviteLink,
   onPlayerAction,
+  onTableCommand,
   onStartHand
 }: {
   error: string | null;
   snapshot: TableSnapshot;
   inviteLink: string;
   onPlayerAction: (action: PlayerActionPayload["action"], raiseTo?: number) => void;
+  onTableCommand: <TPayload>(eventName: string, payload: TPayload, fallbackMessage: string) => void;
   onStartHand: () => void;
 }) {
   const [raiseTo, setRaiseTo] = useState(() => String(snapshot.hand.currentBet + snapshot.defaults.blinds.bigBlind));
@@ -397,6 +421,8 @@ function TableRoom({
                   {seat.player.isBigBlind ? <span>Big blind</span> : null}
                   {seat.player.hasCards ? <span>Cards dealt</span> : null}
                   {seat.player.hasFolded ? <span>Folded</span> : null}
+                  {seat.player.isSittingOut ? <span>Sitting out</span> : null}
+                  {seat.player.isBusted ? <span>Busted</span> : null}
                   {seat.player.isHost ? <span>Host</span> : null}
                 </div>
                 {seat.player.visibleHoleCards.length > 0 ? (
@@ -438,8 +464,107 @@ function TableRoom({
           <button disabled={!snapshot.availableControls.canStartHand} onClick={onStartHand} type="button">
             Start hand
           </button>
-          <button disabled={!snapshot.availableControls.canSeatSpectators}>Seat spectator</button>
+          <button
+            disabled={!snapshot.availableControls.canDealNextHand}
+            onClick={() =>
+              onTableCommand<DealNextHandPayload>(
+                "hand:next",
+                { tableId: snapshot.tableId },
+                "Unable to deal next hand."
+              )
+            }
+            type="button"
+          >
+            Deal next hand
+          </button>
+          <button
+            disabled={!snapshot.availableControls.canSitOut}
+            onClick={() =>
+              onTableCommand<SitOutPayload>(
+                "player:sitOut",
+                { tableId: snapshot.tableId },
+                "Unable to sit out."
+              )
+            }
+            type="button"
+          >
+            Sit out
+          </button>
+          <button
+            disabled={!snapshot.availableControls.canRejoin}
+            onClick={() =>
+              onTableCommand<RejoinPayload>("player:rejoin", { tableId: snapshot.tableId }, "Unable to rejoin.")
+            }
+            type="button"
+          >
+            Rejoin
+          </button>
         </div>
+        {snapshot.isHost ? (
+          <div className="host-controls" aria-label="Host table controls">
+            {snapshot.spectators.length > 0 ? (
+              <div>
+                <h3>Spectators</h3>
+                {snapshot.spectators.map((spectator) => (
+                  <button
+                    disabled={!snapshot.availableControls.canSeatSpectators}
+                    key={spectator.id}
+                    onClick={() =>
+                      onTableCommand<SeatSpectatorPayload>(
+                        "host:seatSpectator",
+                        { tableId: snapshot.tableId, participantId: spectator.id },
+                        "Unable to seat spectator."
+                      )
+                    }
+                    type="button"
+                  >
+                    Seat {spectator.displayName}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <div>
+              <h3>Players</h3>
+              {snapshot.seats
+                .map((seat) => seat.player)
+                .filter(isSeatPlayer)
+                .filter((player) => !player.isHost)
+                .map((player) => (
+                  <div className="host-controls__row" key={player.id}>
+                    <span>{player.displayName}</span>
+                    <button
+                      disabled={snapshot.hand.phase !== "settled" && snapshot.hand.phase !== "waiting"}
+                      onClick={() =>
+                        onTableCommand<ApproveRebuyPayload>(
+                          "host:approveRebuy",
+                          { tableId: snapshot.tableId, participantId: player.id },
+                          "Unable to approve rebuy."
+                        )
+                      }
+                      type="button"
+                    >
+                      Rebuy
+                    </button>
+                    <button
+                      disabled={
+                        player.isConnected || (snapshot.hand.phase !== "settled" && snapshot.hand.phase !== "waiting")
+                      }
+                      onClick={() =>
+                        onTableCommand<RemovePlayerPayload>(
+                          "host:removePlayer",
+                          { tableId: snapshot.tableId, participantId: player.id },
+                          "Unable to remove player."
+                        )
+                      }
+                      type="button"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+            </div>
+          </div>
+        ) : null}
         {error ? <p className="form-error">{error}</p> : null}
         <div className="action-log" aria-label="Public action log">
           <h3>Action log</h3>
@@ -545,6 +670,12 @@ function CardView({ card }: { card: Card }) {
       </span>
     </span>
   );
+}
+
+function isSeatPlayer(
+  player: TableSnapshot["seats"][number]["player"]
+): player is NonNullable<TableSnapshot["seats"][number]["player"]> {
+  return Boolean(player);
 }
 
 function formatPhase(phase: string): string {
