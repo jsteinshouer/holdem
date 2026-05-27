@@ -20,3 +20,30 @@ pnpm test:e2e
 ```
 
 Copy `.env.example` to `.env.local` or export matching environment variables before running the server with non-default settings.
+
+Bash with NVM:
+
+```bash
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+nvm use 24.14.0
+corepack enable
+pnpm install
+pnpm dev
+```
+
+pnpm dev runs both packages in parallel:
+
+```
+client Vite app at http://localhost:5173
+server at http://localhost:8787
+```
+
+In Codex/PowerShell, use:
+
+```
+$nodeBin = Join-Path $env:USERPROFILE '.nvm\versions\node\v24.14.0\bin'
+$env:PATH = "$nodeBin;$env:PATH"
+pnpm.cmd dev
+```
