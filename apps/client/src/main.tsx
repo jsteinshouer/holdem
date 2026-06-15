@@ -22,7 +22,7 @@ import type {
 import { registerServiceWorker } from "./pwa";
 import "./styles.css";
 
-const serverUrl = import.meta.env.VITE_SERVER_URL ?? "http://localhost:8787";
+const serverUrl = import.meta.env.VITE_SERVER_URL ?? window.location.origin;
 
 type ConnectionState = "connecting" | "connected" | "offline";
 

@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { io } from "socket.io-client";
 import { registerServiceWorker } from "./pwa";
 import "./styles.css";
-const serverUrl = import.meta.env.VITE_SERVER_URL ?? "http://localhost:8787";
+const serverUrl = import.meta.env.VITE_SERVER_URL ?? window.location.origin;
 function App() {
     const [socket, setSocket] = useState(null);
     const [connectionState, setConnectionState] = useState("connecting");

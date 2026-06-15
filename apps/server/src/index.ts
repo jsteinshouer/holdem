@@ -1,4 +1,7 @@
-import { createServer } from "node:http";
+import { createServer, type ServerResponse } from "node:http";
+import { createReadStream, existsSync, statSync } from "node:fs";
+import { extname, join, normalize, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
   ApproveRebuyPayload,
   CreateTablePayload,
@@ -29,9 +32,20 @@ const disconnectedActionTimers = new Map<string, ReturnType<typeof setTimeout>>(
 const rejectedCommandTimestampsBySocket = new Map<string, number[]>();
 const INVALID_COMMAND_RATE_LIMIT_WINDOW_MS = 10_000;
 const INVALID_COMMAND_RATE_LIMIT_MAX = 4;
-const httpServer = createServer((_request, response) => {
-  response.writeHead(200, { "content-type": "application/json" });
-  response.end(JSON.stringify({ ok: true, service: "friendly-holdem-server" }));
+const staticClientDir = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../client/dist");
+const staticClientAvailable = existsSync(join(staticClientDir, "index.html"));
+const httpServer = createServer((request, response) => {
+  if (request.url?.startsWith("/socket.io/")) {
+    return;
+  }
+
+  if (request.url === "/healthz" || !staticClientAvailable) {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ ok: true, service: "friendly-holdem-server" }));
+    return;
+  }
+
+  serveStaticClient(request.url ?? "/", response);
 });
 
 const io = new Server(httpServer, {
@@ -321,6 +335,8 @@ httpServer.listen(config.port, () => {
   logger.info("server started", {
     port: config.port,
     clientOrigin: config.clientOrigin,
+    staticClientDir,
+    staticClientAvailable,
     defaultStartingStack: config.defaults.startingStack,
     defaultSmallBlind: config.defaults.blinds.smallBlind,
     defaultBigBlind: config.defaults.blinds.bigBlind,
@@ -345,8 +361,47 @@ function runTableCommand(
         : error instanceof Error
           ? error.message
           : "Command failed.";
+    logger.warn("command rejected", { socketId, reason });
     reply?.({ ok: false, reason });
   }
+}
+
+function serveStaticClient(requestUrl: string, response: ServerResponse): void {
+  const pathname = new URL(requestUrl, "http://localhost").pathname;
+  const requestedPath = pathname === "/" ? "index.html" : decodeURIComponent(pathname).replace(/^\/+/, "");
+  const filePath = safeStaticPath(requestedPath);
+  const existingFilePath = filePath && isFile(filePath) ? filePath : join(staticClientDir, "index.html");
+
+  response.writeHead(200, { "content-type": contentTypeFor(existingFilePath) });
+  createReadStream(existingFilePath).pipe(response);
+}
+
+function safeStaticPath(pathname: string): string | null {
+  const filePath = resolve(staticClientDir, normalize(pathname));
+
+  return filePath.startsWith(`${staticClientDir}${sep}`) ? filePath : null;
+}
+
+function isFile(filePath: string): boolean {
+  try {
+    return statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function contentTypeFor(filePath: string): string {
+  const contentTypes: Record<string, string> = {
+    ".css": "text/css; charset=utf-8",
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".png": "image/png",
+    ".svg": "image/svg+xml; charset=utf-8",
+    ".webmanifest": "application/manifest+json; charset=utf-8"
+  };
+
+  return contentTypes[extname(filePath)] ?? "application/octet-stream";
 }
 
 function isInvalidCommandRateLimited(socketId: string): boolean {

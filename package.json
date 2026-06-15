@@ -8,10 +8,12 @@
   "scripts": {
     "dev": "pnpm --parallel --filter @friendly-holdem/client --filter @friendly-holdem/server dev",
     "build": "pnpm -r build",
+    "start": "pnpm --filter @friendly-holdem/server start",
     "typecheck": "tsc -b",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:prod": "pnpm build && playwright test --config=playwright.production.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",

@@ -15,8 +15,10 @@ pnpm install
 pnpm dev
 pnpm typecheck
 pnpm build
+pnpm start
 pnpm test
 pnpm test:e2e
+pnpm test:e2e:prod
 ```
 
 Copy `.env.example` to `.env.local` or export matching environment variables before running the server with non-default settings.
@@ -42,6 +44,8 @@ pnpm dev
 
 For example, seeing `19 skipped` can be expected when the skipped tests match those project filters.
 
+`pnpm test:e2e:prod` builds the client, server, and shared package, then starts the compiled server and verifies that the built React app is playable from separate browser sessions through the Node service.
+
 pnpm dev runs both packages in parallel:
 
 ```
@@ -56,3 +60,7 @@ $nodeBin = Join-Path $env:USERPROFILE '.nvm\versions\node\v24.14.0\bin'
 $env:PATH = "$nodeBin;$env:PATH"
 pnpm.cmd dev
 ```
+
+## Deployment
+
+See [docs/deployment.md](docs/deployment.md) for the production-like single Node service path, required environment values, and the static-hosting alternative.
