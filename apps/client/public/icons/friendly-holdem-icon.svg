@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Friendly Hold'em app icon</title>
+  <rect width="512" height="512" rx="96" fill="#12362f" />
+  <circle cx="256" cy="256" r="188" fill="#0b4437" stroke="#d8aa47" stroke-width="20" />
+  <rect x="146" y="130" width="120" height="170" rx="18" fill="#fff8e8" transform="rotate(-10 206 215)" />
+  <rect x="246" y="154" width="120" height="170" rx="18" fill="#fff8e8" transform="rotate(10 306 239)" />
+  <text x="188" y="234" fill="#9c2d2d" font-family="Georgia, serif" font-size="86" font-weight="700">A</text>
+  <text x="285" y="258" fill="#1d211b" font-family="Georgia, serif" font-size="86" font-weight="700">K</text>
+  <circle cx="256" cy="360" r="46" fill="#d8aa47" stroke="#f5ead2" stroke-width="10" />
+</svg>

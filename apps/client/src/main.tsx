@@ -19,6 +19,7 @@ import type {
   TableCommandResponse,
   TableSnapshot
 } from "@friendly-holdem/shared";
+import { registerServiceWorker } from "./pwa";
 import "./styles.css";
 
 const serverUrl = import.meta.env.VITE_SERVER_URL ?? "http://localhost:8787";
@@ -1078,3 +1079,7 @@ createRoot(document.getElementById("root") as HTMLElement).render(
     <App />
   </StrictMode>
 );
+
+registerServiceWorker().catch(() => {
+  // Installability should never block realtime play.
+});

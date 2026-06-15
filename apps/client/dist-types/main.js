@@ -2,6 +2,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { io } from "socket.io-client";
+import { registerServiceWorker } from "./pwa";
 import "./styles.css";
 const serverUrl = import.meta.env.VITE_SERVER_URL ?? "http://localhost:8787";
 function App() {
@@ -385,3 +386,6 @@ function rememberLastTable(tableId) {
     window.localStorage.setItem("friendly-holdem:last-table", tableId);
 }
 createRoot(document.getElementById("root")).render(_jsx(StrictMode, { children: _jsx(App, {}) }));
+registerServiceWorker().catch(() => {
+    // Installability should never block realtime play.
+});

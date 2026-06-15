@@ -12,12 +12,12 @@ Add basic Progressive Web App installability without adding offline gameplay or 
 
 ## Acceptance criteria
 
-- [ ] The client includes a valid web app manifest.
-- [ ] The manifest includes app name, icons, and theme color.
-- [ ] Static assets required for the app shell are cacheable through a service worker.
-- [ ] PWA setup does not imply offline gameplay, offline table recovery, background sync, or push notifications.
-- [ ] PWA behavior does not interfere with Socket.IO connection behavior during normal online play.
-- [ ] Build/test checks verify manifest presence and service worker registration or generated output.
+- [x] The client includes a valid web app manifest.
+- [x] The manifest includes app name, icons, and theme color.
+- [x] Static assets required for the app shell are cacheable through a service worker.
+- [x] PWA setup does not imply offline gameplay, offline table recovery, background sync, or push notifications.
+- [x] PWA behavior does not interfere with Socket.IO connection behavior during normal online play.
+- [x] Build/test checks verify manifest presence and service worker registration or generated output.
 
 ## Blocked by
 
