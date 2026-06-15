@@ -13,12 +13,14 @@ flowchart LR
   Server["Node/TypeScript Server"]
   Domain["Pure Poker Domain Engine"]
   Memory["In-Memory Table Store"]
+  Persistence["Active Table Persistence"]
 
   Browser <--> Socket
   Socket <--> Server
   Server --> Domain
   Domain --> Server
   Server <--> Memory
+  Memory <--> Persistence
 ```
 
 ## Monorepo Structure
@@ -99,6 +101,16 @@ It should be testable without Socket.IO, React, or a running server.
 - A bounded in-memory event log is kept per table for action history and debugging.
 - Database persistence is a post-MVP backlog item.
 
+Post-MVP active table persistence should preserve the latest authoritative table state across server restarts, including an in-progress hand. It should restore the current hand state, deck order, board, hole cards, committed bets, current actor, action log, stacks, settlement state, host identity, participants, and session tokens.
+
+The first persistence implementation should support SQLite and store one versioned serialized active-table state per table, plus metadata such as table ID, schema version, last activity time, and update time. The table-session runtime should depend on a narrow persistence port rather than SQLite directly so another backend can be added later without changing the domain model.
+
+Every successful table-changing command should save the updated table state synchronously before the server acknowledges the command or broadcasts new snapshots. Passive page views and rejected commands should not extend table lifetime. Persisted active tables should expire after a configurable inactivity window based on the last successful table-changing command.
+
+Live socket connections remain ephemeral. During startup restore, all participants should be marked disconnected, and browsers reconnect with their existing session tokens. If a restored current actor is disconnected and already past the configured disconnected-action grace period, the server should apply the normal auto-check or auto-fold behavior after startup restore finishes.
+
+If a persisted active table cannot be restored because its state is corrupted or uses an unsupported schema version, the server should quarantine that record, log a redacted startup error, keep running, and make the affected table unavailable rather than risk invalid poker state.
+
 ## Deployment
 
 - MVP targets a single always-on Node web service that supports WebSockets.
@@ -121,6 +133,7 @@ It should be testable without Socket.IO, React, or a running server.
 - Table IDs and session tokens use secure randomness.
 - Logs must not include private hole cards or session tokens.
 - Production CORS is restricted to configured origins.
+- Persisted active table state contains sensitive operational data, including session tokens and unrevealed cards. The application should not log persisted table state, and the deployment environment should protect the SQLite file or database storage.
 
 ## Intentional MVP Constraints
 

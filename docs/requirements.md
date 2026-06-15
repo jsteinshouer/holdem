@@ -32,6 +32,9 @@
 - React renders server snapshots and sends player intents.
 - Server-to-client sync uses full table snapshots for MVP.
 - Snapshots are player-specific so a client only receives hidden information they are allowed to see.
+- Post-MVP active table persistence should store the latest authoritative table state so private tables can survive server restarts.
+- Active table persistence should support SQLite first, using a narrow persistence port so another backend can be added later.
+- Persisted active table state should be a versioned serialized table state, not a relational hand-history or replay model.
 
 Preferred domain API shape:
 
@@ -263,7 +266,7 @@ Milestone 1 acceptance checklist:
 
 ## Post-MVP Backlog
 
-- Persist active games so tables survive server restarts.
+- Active table persistence so tables survive server restarts, including in-progress hands.
 - Public lobby or table browser.
 - Matchmaking.
 - Configurable blinds and starting stacks.
@@ -279,7 +282,7 @@ Milestone 1 acceptance checklist:
 - Real-money wagering, deposits, withdrawals, prizes, or cash-out.
 - Accounts, login, passwords, email verification, and global profiles.
 - Public lobby, matchmaking, and table browser.
-- Database persistence for active games.
+- Database persistence for active tables.
 - Tournaments and multi-table play.
 - Player stats, profile history, and long-term hand history.
 - Optional table passwords.

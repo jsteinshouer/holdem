@@ -38,6 +38,16 @@ The server serves `apps/client/dist` when that build output exists. Browser rout
 
 Do not put secrets in these values. The MVP uses private invite links and browser-held session tokens, but no database credentials or third-party API keys are required.
 
+## Post-MVP Active Table Persistence
+
+Active table persistence should use explicit configuration once implemented:
+
+- `ACTIVE_TABLE_PERSISTENCE`: Storage mode for active tables. Supported first values should be `memory` and `sqlite`.
+- `ACTIVE_TABLE_SQLITE_PATH`: Path to the SQLite database file when `ACTIVE_TABLE_PERSISTENCE=sqlite`. The default should be outside the repository, and production should point this at persistent provider-managed storage.
+- `ACTIVE_TABLE_INACTIVITY_TTL_MS`: Inactivity window after which persisted active tables expire. Activity means a successful table-changing command.
+
+Persisted active table state includes session tokens and hidden card state. Do not commit SQLite database files, log persisted table state, or store the database on ephemeral production disk if restart recovery is expected.
+
 ## Static Hosting Alternative
 
 If a provider serves static assets separately, deploy `apps/client/dist` to that static host and deploy `apps/server/dist` as an always-on Node service with WebSockets enabled. Build the client with `VITE_SERVER_URL` set to the public server origin, and set the server's `CLIENT_ORIGIN` to the public static-site origin.

@@ -1,0 +1,3 @@
+# SQLite-First Active Table Persistence
+
+Post-MVP active table persistence will support SQLite first and store one versioned serialized active-table state per table behind a narrow persistence port. This favors reliable restart recovery for private tables, including in-progress hands, without expanding into hand replay, audit history, or a relational poker-history model; another backend can be added later behind the same port if production needs outgrow SQLite. A TypeScript ORM or database toolkit may manage the SQLite schema and migrations, but the exact package should be selected during implementation after dependency and license review.

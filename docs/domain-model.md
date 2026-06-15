@@ -26,7 +26,7 @@ A participant who can view public table state and chat but cannot take poker act
 
 ### Session Token
 
-A private browser-held token used to reconnect a player to the same seat during the active in-memory table session.
+A private browser-held token used to reconnect a player to the same seat at an active table.
 
 ### Hand
 
@@ -85,6 +85,10 @@ A factual record produced by the domain engine after a command is applied, such 
 ### Command Result
 
 The result of applying a command to table state. It includes the updated table state, domain events, and a rejection reason if the command is invalid.
+
+### Active Table Persistence
+
+The ability for an active table, including an in-progress hand, to survive a server restart and remain recoverable by its private invite link and participant session tokens.
 
 ## Relationship Overview
 
@@ -200,4 +204,5 @@ Adds a bounded table-scoped chat message after validating participant identity, 
 - The hand is nested inside the table and exists only while a hand is active or recently settled.
 - The server is authoritative for every entity in this model.
 - The client never owns game state; it renders snapshots and sends intents.
+- Active table persistence preserves the latest authoritative table state but does not create hand replay or casino-grade audit history.
 - This model should evolve when the implementation reveals clearer names or boundaries.
