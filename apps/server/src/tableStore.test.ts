@@ -80,6 +80,140 @@ describe("table store", () => {
     expect(reconnect.snapshot.seats[1]?.player?.isConnected).toBe(true);
   });
 
+  it("reconnects spectators as spectators", () => {
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    store.joinTable(host.snapshot.tableId, "Grace");
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    const spectator = store.joinTable(host.snapshot.tableId, "Watcher");
+
+    store.disconnectParticipant(host.snapshot.tableId, spectator.snapshot.viewerParticipantId);
+    const reconnect = store.reconnectTable(host.snapshot.tableId, spectator.sessionToken);
+
+    expect(reconnect.snapshot.viewerParticipantId).toBe(spectator.snapshot.viewerParticipantId);
+    expect(reconnect.snapshot.viewerRole).toBe("spectator");
+    expect(reconnect.snapshot.spectators[0]?.isConnected).toBe(true);
+  });
+
+  it("marks between-hand disconnected players sitting out until they reconnect", () => {
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    const player = store.joinTable(host.snapshot.tableId, "Grace");
+
+    store.disconnectParticipant(host.snapshot.tableId, player.snapshot.viewerParticipantId);
+
+    expect(
+      store.snapshotFor(host.snapshot.tableId, host.snapshot.viewerParticipantId).seats[1]?.player?.isSittingOut
+    ).toBe(true);
+
+    const reconnect = store.reconnectTable(host.snapshot.tableId, player.sessionToken);
+
+    expect(reconnect.snapshot.seats[1]?.player?.isSittingOut).toBe(false);
+  });
+
+  it("keeps disconnected players seated during an active hand", () => {
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    const player = store.joinTable(host.snapshot.tableId, "Grace");
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    store.disconnectParticipant(host.snapshot.tableId, player.snapshot.viewerParticipantId);
+
+    const snapshot = store.snapshotFor(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(snapshot.seats[1]?.player?.displayName).toBe("Grace");
+    expect(snapshot.seats[1]?.player?.isConnected).toBe(false);
+    expect(snapshot.seats[1]?.player?.isSittingOut).toBe(false);
+  });
+
+  it("auto-folds a disconnected current actor after the grace period when checking is not legal", () => {
+    let now = 0;
+    const store = createTableStore(defaults, undefined, () => now);
+    const host = store.createTable("Host");
+    const player = store.joinTable(host.snapshot.tableId, "Grace");
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    store.disconnectParticipant(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    now = defaults.disconnectedActionGraceMs - 1;
+    expect(store.autoActDisconnectedCurrentActor(host.snapshot.tableId)).toBeNull();
+
+    now = defaults.disconnectedActionGraceMs;
+    const response = store.autoActDisconnectedCurrentActor(host.snapshot.tableId);
+
+    expect(response?.snapshot.hand.phase).toBe("settled");
+    expect(response?.snapshot.seats[0]?.player?.hasFolded).toBe(true);
+    expect(response?.snapshot.hand.actionLog).toContain("Host folded.");
+    expect(response?.snapshot.hand.settlementSummary).toBe("Grace won $15 after everyone else folded.");
+    expect(player.snapshot.viewerParticipantId).toHaveLength(22);
+  });
+
+  it("auto-checks a disconnected current actor after the grace period when checking is legal", () => {
+    let now = 0;
+    const store = createTableStore(defaults, undefined, () => now);
+    const host = store.createTable("Host");
+    const player = store.joinTable(host.snapshot.tableId, "Grace");
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    store.playerAction(host.snapshot.tableId, host.snapshot.viewerParticipantId, "call");
+    store.disconnectParticipant(host.snapshot.tableId, player.snapshot.viewerParticipantId);
+
+    now += defaults.disconnectedActionGraceMs;
+    const response = store.autoActDisconnectedCurrentActor(host.snapshot.tableId);
+
+    expect(response?.snapshot.hand.phase).toBe("flop");
+    expect(response?.snapshot.hand.actionLog).toContain("Grace checked.");
+    expect(response?.snapshot.seats[1]?.player?.hasFolded).toBe(false);
+  });
+
+  it("lets the host auto-fold a connected inactive actor only after the threshold", () => {
+    let now = 0;
+    const store = createTableStore(defaults, undefined, () => now);
+    const host = store.createTable("Host");
+    const player = store.joinTable(host.snapshot.tableId, "Grace");
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(() => store.hostAutoFoldInactive(host.snapshot.tableId, host.snapshot.viewerParticipantId)).toThrow(
+      "The current actor has not been inactive long enough."
+    );
+
+    now = defaults.hostAutoFoldAfterMs;
+    const snapshot = store.snapshotFor(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(snapshot.availableControls.canHostAutoFoldInactive).toBe(true);
+
+    const response = store.hostAutoFoldInactive(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(response.snapshot.hand.phase).toBe("settled");
+    expect(response.snapshot.seats[0]?.player?.hasFolded).toBe(true);
+    expect(response.snapshot.hand.settlementSummary).toBe("Grace won $15 after everyone else folded.");
+    expect(player.snapshot.viewerParticipantId).toHaveLength(22);
+  });
+
+  it("rejects host auto-fold when the current actor is all-in", () => {
+    let now = 0;
+    const store = createTableStore(defaults, undefined, () => now);
+    const host = store.createTable("Host");
+    store.joinTable(host.snapshot.tableId, "Grace");
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    const table = store.getTable(host.snapshot.tableId);
+    const handState = table?.hand?.participants.get(host.snapshot.viewerParticipantId);
+
+    if (!handState) {
+      throw new Error("Expected host to be in the hand.");
+    }
+
+    handState.isAllIn = true;
+    now = defaults.hostAutoFoldAfterMs;
+
+    expect(() => store.hostAutoFoldInactive(host.snapshot.tableId, host.snapshot.viewerParticipantId)).toThrow(
+      "An all-in player cannot be auto-folded."
+    );
+  });
+
   it("does not expose session tokens in snapshots", () => {
     const store = createTableStore(defaults);
     const host = store.createTable("Host");
@@ -320,6 +454,34 @@ describe("table store", () => {
     expect(response.snapshot.hand.settlementSummary).toBe("Host won $40 from the main pot with one pair.");
     expect(response.snapshot.seats[0]?.player?.stack).toBe(40);
     expect(response.snapshot.seats[1]?.player?.stack).toBe(0);
+  });
+
+  it("keeps a disconnected all-in player eligible for pots", () => {
+    const store = createTableStore({ ...defaults, startingStack: 20 });
+    const host = store.createTable("Host");
+    const player = store.joinTable(host.snapshot.tableId, "Grace");
+    const privateTable = store.getTable(host.snapshot.tableId);
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    const hand = privateTable?.hand;
+
+    if (!hand) {
+      throw new Error("Expected an active hand.");
+    }
+
+    hand.participants.get(host.snapshot.viewerParticipantId)!.holeCards = [card("A", "spades"), card("A", "hearts")];
+    hand.participants.get(player.snapshot.viewerParticipantId)!.holeCards = [card("K", "spades"), card("K", "hearts")];
+    hand.deck = boardDeck();
+
+    store.playerAction(host.snapshot.tableId, host.snapshot.viewerParticipantId, "all-in");
+    store.disconnectParticipant(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    const response = store.playerAction(host.snapshot.tableId, player.snapshot.viewerParticipantId, "call");
+
+    expect(response.snapshot.hand.phase).toBe("settled");
+    expect(response.snapshot.hand.settlementSummary).toBe("Host won $40 from the main pot with one pair.");
+    expect(response.snapshot.seats[0]?.player?.stack).toBe(40);
+    expect(response.snapshot.seats[0]?.player?.isConnected).toBe(false);
+    expect(response.snapshot.seats[0]?.player?.hasFolded).toBe(false);
   });
 
   it("creates and settles side pots only among eligible players", () => {
@@ -582,7 +744,7 @@ describe("table store", () => {
   });
 
   it("rejects between-hand host controls during an active hand without mutating state", () => {
-    const store = createTableStore(defaults);
+    const store = createTableStore(defaults, undefined, () => 0);
     const host = store.createTable("Host");
     const player = store.joinTable(host.snapshot.tableId, "Grace");
     const spectator = store.joinTable(host.snapshot.tableId, "Watcher");

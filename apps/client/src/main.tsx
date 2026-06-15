@@ -6,6 +6,7 @@ import type {
   Card,
   CreateTablePayload,
   DealNextHandPayload,
+  HostAutoFoldInactivePayload,
   JoinTablePayload,
   LegalAction,
   PlayerActionPayload,
@@ -305,6 +306,7 @@ function TableRoom({
   onStartHand: () => void;
 }) {
   const [raiseTo, setRaiseTo] = useState(() => String(snapshot.hand.currentBet + snapshot.defaults.blinds.bigBlind));
+  const [nowMs, setNowMs] = useState(Date.now);
   const host = snapshot.seats
     .map((seat) => seat.player)
     .find((player) => player?.isHost);
@@ -313,10 +315,25 @@ function TableRoom({
     .find((player) => player?.id === snapshot.hand.currentActorId);
   const minimumRaiseTo = snapshot.hand.currentBet + snapshot.defaults.blinds.bigBlind;
   const canRaise = snapshot.hand.legalActions.includes("raise");
+  const currentActorInactiveForMs =
+    snapshot.hand.currentActorSince === null ? 0 : Math.max(0, nowMs - snapshot.hand.currentActorSince);
+  const canHostAutoFoldInactive =
+    snapshot.isHost &&
+    Boolean(currentActor) &&
+    Boolean(currentActor?.isConnected) &&
+    !currentActor?.isAllIn &&
+    currentActorInactiveForMs >= snapshot.defaults.hostAutoFoldAfterMs;
 
   useEffect(() => {
     setRaiseTo(String(minimumRaiseTo));
   }, [minimumRaiseTo, snapshot.hand.currentActorId]);
+
+  useEffect(() => {
+    setNowMs(Date.now());
+    const timer = window.setInterval(() => setNowMs(Date.now()), 250);
+
+    return () => window.clearInterval(timer);
+  }, [snapshot.hand.currentActorSince]);
 
   return (
     <div className="table-layout">
@@ -421,8 +438,13 @@ function TableRoom({
                   {seat.player.isBigBlind ? <span>Big blind</span> : null}
                   {seat.player.hasCards ? <span>Cards dealt</span> : null}
                   {seat.player.hasFolded ? <span>Folded</span> : null}
+                  {seat.player.isAllIn ? <span>All-in</span> : null}
                   {seat.player.isSittingOut ? <span>Sitting out</span> : null}
                   {seat.player.isBusted ? <span>Busted</span> : null}
+                  {!seat.player.isConnected ? <span>Away</span> : null}
+                  {seat.player.inactiveForMs !== null ? (
+                    <span>Inactive {formatDuration(seat.player.inactiveForMs)}</span>
+                  ) : null}
                   {seat.player.isHost ? <span>Host</span> : null}
                 </div>
                 {seat.player.visibleHoleCards.length > 0 ? (
@@ -463,6 +485,19 @@ function TableRoom({
         <div className="control-strip" aria-label="Available controls">
           <button disabled={!snapshot.availableControls.canStartHand} onClick={onStartHand} type="button">
             Start hand
+          </button>
+          <button
+            disabled={!canHostAutoFoldInactive}
+            onClick={() =>
+              onTableCommand<HostAutoFoldInactivePayload>(
+                "host:autoFoldInactive",
+                { tableId: snapshot.tableId },
+                "Unable to auto-fold inactive player."
+              )
+            }
+            type="button"
+          >
+            Auto-fold inactive
           </button>
           <button
             disabled={!snapshot.availableControls.canDealNextHand}
@@ -684,6 +719,14 @@ function formatPhase(phase: string): string {
 
 function formatAction(action: string): string {
   return action === "all-in" ? "All-in" : action[0]?.toUpperCase() + action.slice(1);
+}
+
+function formatDuration(milliseconds: number): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+
+  return minutes > 0 ? `${minutes}m ${remainingSeconds}s` : `${remainingSeconds}s`;
 }
 
 function suitSymbol(suit: Card["suit"]): string {

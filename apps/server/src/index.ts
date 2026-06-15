@@ -3,6 +3,7 @@ import type {
   ApproveRebuyPayload,
   CreateTablePayload,
   DealNextHandPayload,
+  HostAutoFoldInactivePayload,
   JoinTablePayload,
   PlayerActionPayload,
   ReconnectPlayerPayload,
@@ -23,6 +24,7 @@ const logger = createLogger("friendly-holdem-server");
 const tableStore = createTableStore(config.defaults, config.clientOrigin);
 const socketsByParticipant = new Map<string, Set<string>>();
 const participantBySocket = new Map<string, { tableId: string; participantId: string }>();
+const disconnectedActionTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const httpServer = createServer((_request, response) => {
   response.writeHead(200, { "content-type": "application/json" });
   response.end(JSON.stringify({ ok: true, service: "friendly-holdem-server" }));
@@ -73,6 +75,7 @@ io.on("connection", (socket) => {
         spectatorCount: response.snapshot.spectatorCount
       });
       broadcastSnapshots(activeTableId);
+      scheduleDisconnectedAutoAction(activeTableId);
       return response;
     });
   });
@@ -92,6 +95,7 @@ io.on("connection", (socket) => {
           viewerRole: response.snapshot.viewerRole
         });
         broadcastSnapshots(activeTableId);
+        scheduleDisconnectedAutoAction(activeTableId);
         return response;
       });
     }
@@ -113,6 +117,7 @@ io.on("connection", (socket) => {
         phase: response.snapshot.hand.phase
       });
       broadcastSnapshots(payload.tableId);
+      scheduleDisconnectedAutoAction(payload.tableId);
       return response;
     });
   });
@@ -133,6 +138,7 @@ io.on("connection", (socket) => {
         phase: response.snapshot.hand.phase
       });
       broadcastSnapshots(payload.tableId);
+      scheduleDisconnectedAutoAction(payload.tableId);
       return response;
     });
   });
@@ -158,6 +164,7 @@ io.on("connection", (socket) => {
         phase: response.snapshot.hand.phase
       });
       broadcastSnapshots(payload.tableId);
+      scheduleDisconnectedAutoAction(payload.tableId);
       return response;
     });
   });
@@ -172,6 +179,7 @@ io.on("connection", (socket) => {
 
       const response = tableStore.sitOut(payload.tableId, participant.participantId);
       broadcastSnapshots(payload.tableId);
+      scheduleDisconnectedAutoAction(payload.tableId);
       return response;
     });
   });
@@ -186,6 +194,7 @@ io.on("connection", (socket) => {
 
       const response = tableStore.rejoin(payload.tableId, participant.participantId);
       broadcastSnapshots(payload.tableId);
+      scheduleDisconnectedAutoAction(payload.tableId);
       return response;
     });
   });
@@ -205,6 +214,7 @@ io.on("connection", (socket) => {
         participantId: payload.participantId
       });
       broadcastSnapshots(payload.tableId);
+      scheduleDisconnectedAutoAction(payload.tableId);
       return response;
     });
   });
@@ -219,6 +229,7 @@ io.on("connection", (socket) => {
 
       const response = tableStore.seatSpectator(payload.tableId, participant.participantId, payload.participantId);
       broadcastSnapshots(payload.tableId);
+      scheduleDisconnectedAutoAction(payload.tableId);
       return response;
     });
   });
@@ -238,9 +249,32 @@ io.on("connection", (socket) => {
         participantId: payload.participantId
       });
       broadcastSnapshots(payload.tableId);
+      scheduleDisconnectedAutoAction(payload.tableId);
       return response;
     });
   });
+
+  socket.on(
+    "host:autoFoldInactive",
+    (payload: HostAutoFoldInactivePayload, reply?: (response: TableCommandResponse) => void) => {
+      runTableCommand(reply, () => {
+        const participant = participantBySocket.get(socket.id);
+
+        if (!participant || participant.tableId !== payload.tableId) {
+          throw new Error("Join the table before auto-folding an inactive player.");
+        }
+
+        const response = tableStore.hostAutoFoldInactive(payload.tableId, participant.participantId);
+        logger.info("inactive player auto-folded by host", {
+          tableId: payload.tableId,
+          hostId: participant.participantId
+        });
+        broadcastSnapshots(payload.tableId);
+        scheduleDisconnectedAutoAction(payload.tableId);
+        return response;
+      });
+    }
+  );
 
   socket.on("disconnect", (reason) => {
     const activeParticipant = participantBySocket.get(socket.id);
@@ -254,6 +288,7 @@ io.on("connection", (socket) => {
       }
 
       broadcastSnapshots(activeParticipant.tableId);
+      scheduleDisconnectedAutoAction(activeParticipant.tableId);
     }
 
     logger.info("socket disconnected", { socketId: socket.id, reason });
@@ -300,6 +335,51 @@ function broadcastSnapshots(tableId: string): void {
       io.to(socketId).emit("table:snapshot", tableStore.snapshotFor(tableId, participant.id));
     }
   }
+}
+
+function scheduleDisconnectedAutoAction(tableId: string): void {
+  const existingTimer = disconnectedActionTimers.get(tableId);
+
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+    disconnectedActionTimers.delete(tableId);
+  }
+
+  const table = tableStore.getTable(tableId);
+  const hand = table?.hand;
+
+  if (!table || !hand || hand.currentActorSeat === null || hand.currentActorSince === null) {
+    return;
+  }
+
+  const actor = [...table.participants.values()].find(
+    (participant) => participant.seatNumber === hand.currentActorSeat
+  );
+  const handState = actor ? hand.participants.get(actor.id) : undefined;
+
+  if (!actor || actor.isConnected || handState?.isAllIn) {
+    return;
+  }
+
+  const elapsedMs = Date.now() - hand.currentActorSince;
+  const remainingMs = Math.max(0, table.defaults.disconnectedActionGraceMs - elapsedMs);
+  const timer = setTimeout(() => {
+    disconnectedActionTimers.delete(tableId);
+    const response = tableStore.autoActDisconnectedCurrentActor(tableId);
+
+    if (response) {
+      logger.info("disconnected player auto-acted", {
+        tableId,
+        participantId: response.snapshot.viewerParticipantId,
+        phase: response.snapshot.hand.phase
+      });
+      broadcastSnapshots(tableId);
+    }
+
+    scheduleDisconnectedAutoAction(tableId);
+  }, remainingMs);
+
+  disconnectedActionTimers.set(tableId, timer);
 }
 
 function trackSocket(socketId: string, tableId: string, participantId: string): void {

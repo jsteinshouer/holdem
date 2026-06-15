@@ -19,7 +19,9 @@ export default defineConfig({
     {
       command: "pnpm --filter @friendly-holdem/server dev",
       env: {
-        CLIENT_ORIGIN: "http://127.0.0.1:5173"
+        CLIENT_ORIGIN: "http://127.0.0.1:5173",
+        DISCONNECTED_ACTION_GRACE_MS: "1000",
+        HOST_AUTO_FOLD_AFTER_MS: "1500"
       },
       url: "http://127.0.0.1:8787",
       reuseExistingServer: true
