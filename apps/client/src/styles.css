@@ -20,7 +20,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -42,7 +43,8 @@ button:disabled {
 }
 
 button:focus-visible,
-input:focus-visible {
+input:focus-visible,
+textarea:focus-visible {
   outline: 3px solid #f5ead2;
   outline-offset: 3px;
 }
@@ -144,7 +146,8 @@ h2 {
   gap: 12px;
 }
 
-input {
+input,
+textarea {
   width: 100%;
   min-height: 44px;
   border: 1px solid rgb(245 234 210 / 22%);
@@ -152,6 +155,12 @@ input {
   color: #f5ead2;
   background: rgb(255 255 255 / 7%);
   padding: 0 13px;
+}
+
+textarea {
+  min-height: 82px;
+  padding: 11px 13px;
+  resize: vertical;
 }
 
 .form-error {
@@ -171,10 +180,17 @@ input {
   gap: 18px;
 }
 
+.table-layout--your-turn .felt-panel {
+  border-color: #fce6a1;
+  box-shadow:
+    inset 0 0 0 2px rgb(252 230 161 / 34%),
+    0 0 0 4px rgb(252 230 161 / 12%);
+}
+
 .table-summary {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 460px);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 460px) auto;
   gap: 22px;
   padding: clamp(20px, 4vw, 34px);
 }
@@ -183,6 +199,12 @@ input {
   display: grid;
   align-content: start;
   gap: 8px;
+}
+
+.tutorial-actions {
+  display: grid;
+  align-content: start;
+  gap: 10px;
 }
 
 .invite-box input {
@@ -198,6 +220,10 @@ input {
   margin: 8px 0 0;
   border: 1px solid rgb(245 234 210 / 18%);
   background: rgb(245 234 210 / 18%);
+}
+
+.mobile-tabs {
+  display: none;
 }
 
 .table-metrics div {
@@ -576,12 +602,6 @@ dd {
   font-size: 1.1rem;
 }
 
-.action-log {
-  margin-top: 22px;
-  padding-top: 18px;
-  border-top: 1px solid rgb(245 234 210 / 14%);
-}
-
 .action-log h3 {
   margin: 0 0 10px;
   color: #fce6a1;
@@ -605,6 +625,17 @@ dd {
   padding: 20px;
 }
 
+.rail-panel__section {
+  display: grid;
+  gap: 18px;
+}
+
+.rail-panel__section + .rail-panel__section {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid rgb(245 234 210 / 14%);
+}
+
 .rail-panel ul {
   display: grid;
   gap: 10px;
@@ -623,6 +654,13 @@ dd {
 
 .rail-panel p {
   color: rgb(245 234 210 / 68%);
+}
+
+.spectator-list h3,
+.chat-panel h3 {
+  margin: 18px 0 0;
+  color: #fce6a1;
+  font-size: 1rem;
 }
 
 .control-strip {
@@ -664,6 +702,103 @@ dd {
   font-weight: 800;
 }
 
+.chat-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.chat-messages {
+  display: grid;
+  max-height: 220px;
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.chat-messages li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  padding: 10px;
+  border: 1px solid rgb(245 234 210 / 14%);
+  border-radius: 6px;
+  background: rgb(7 25 24 / 42%);
+}
+
+.chat-messages strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.chat-messages span {
+  color: rgb(245 234 210 / 58%);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.chat-messages p {
+  grid-column: 1 / -1;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.chat-messages__empty {
+  color: rgb(245 234 210 / 68%);
+}
+
+.chat-form {
+  display: grid;
+  gap: 10px;
+}
+
+.chat-form label {
+  color: rgb(245 234 210 / 72%);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.tutorial-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(3 10 10 / 72%);
+}
+
+.tutorial-dialog__panel {
+  width: min(680px, 100%);
+  max-height: min(720px, 90vh);
+  overflow: auto;
+  border: 1px solid rgb(245 234 210 / 22%);
+  border-radius: 8px;
+  background: #0d2b27;
+  box-shadow: 0 28px 90px rgb(0 0 0 / 42%);
+}
+
+.tutorial-dialog__header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  border-bottom: 1px solid rgb(245 234 210 / 14%);
+  background: #0d2b27;
+}
+
+.tutorial-dialog ol {
+  display: grid;
+  gap: 14px;
+  padding: 20px 28px 26px 42px;
+  margin: 0;
+  color: rgb(245 234 210 / 78%);
+}
+
 @media (max-width: 800px) {
   .room-board__masthead,
   .table-summary,
@@ -672,8 +807,21 @@ dd {
     grid-template-columns: 1fr;
   }
 
+  .app-shell {
+    padding: 12px;
+  }
+
   .room-board__masthead {
     display: grid;
+    padding-bottom: 18px;
+  }
+
+  h1 {
+    font-size: clamp(2.2rem, 12vw, 3.4rem);
+  }
+
+  h2 {
+    font-size: 1.55rem;
   }
 
   .status-pill {
@@ -689,7 +837,68 @@ dd {
   .table-metrics,
   .action-bar,
   .raise-control,
-  .host-controls__row {
+  .host-controls__row,
+  .tutorial-actions {
     grid-template-columns: 1fr;
+  }
+
+  .mobile-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .mobile-tabs button {
+    color: #f5ead2;
+    background: rgb(7 25 24 / 66%);
+  }
+
+  .mobile-tabs button[aria-pressed="true"] {
+    color: #1d211b;
+    background: #fce6a1;
+  }
+
+  .felt-panel {
+    order: -1;
+  }
+
+  .playing-card {
+    width: 64px;
+    height: 90px;
+  }
+
+  .playing-card__corner strong {
+    font-size: 0.88rem;
+  }
+
+  .playing-card__pip {
+    font-size: 1rem;
+  }
+
+  .playing-card__face span {
+    font-size: 1.64rem;
+  }
+
+  .hole-card-tray {
+    display: grid;
+    justify-content: stretch;
+  }
+
+  .action-bar__buttons {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rail-panel__section {
+    display: none;
+  }
+
+  .rail-panel__section[data-active="true"] {
+    display: grid;
+  }
+
+  .rail-panel__section + .rail-panel__section {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
   }
 }

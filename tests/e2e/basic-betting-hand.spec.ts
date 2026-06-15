@@ -1,10 +1,20 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 
-test("two players can play a basic betting hand through settlement", async ({ browser, page }) => {
+test("two players can play a basic betting hand through settlement", async ({ browser, page }, testInfo) => {
+  test.skip(testInfo.project.name.startsWith("mobile-"), "Mobile usability is covered by the mobile layout test.");
+
   const inviteLink = await createTable(page, "Host");
   const playerPage = await joinTable(browser, inviteLink, "Grace");
 
-  await page.getByRole("button", { name: "Start hand" }).click();
+  await page.getByRole("button", { name: "Beginner tutorial" }).click();
+  await expect(page.getByRole("dialog", { name: "Beginner tutorial" })).toContainText("side pots");
+  await page.getByRole("button", { name: "Close" }).click();
+  await showMobilePanelIfAvailable(page, "Chat");
+  await page.getByLabel("Message").fill("hello from host");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(playerPage.getByText("hello from host")).toBeVisible();
+
+  await clickRoomButton(page, "Start hand");
   await expect(page.getByRole("heading", { name: "Preflop" })).toBeVisible();
   await expect(playerPage.getByText("Grace posted big blind $10.")).toBeVisible();
 
@@ -43,7 +53,9 @@ test("mobile layout keeps current player actions usable", async ({ browser, page
   const mobilePage = await mobileContext.newPage();
 
   await joinExistingPage(mobilePage, inviteLink, "Grace");
-  await page.getByRole("button", { name: "Start hand" }).click();
+  await mobilePage.getByRole("button", { name: "Chat" }).click();
+  await expect(mobilePage.getByLabel("Table chat")).toBeVisible();
+  await clickRoomButton(page, "Start hand");
 
   await expect(page.getByRole("button", { name: "Call" })).toBeVisible();
   await page.getByRole("button", { name: "Call" }).click();
@@ -78,4 +90,22 @@ async function joinExistingPage(page: Page, inviteLink: string, displayName: str
   await page.getByLabel("Your display name").fill(displayName);
   await page.getByRole("button", { name: "Join table" }).click();
   await expect(page.getByRole("heading", { name: /Table / })).toBeVisible();
+}
+
+async function clickRoomButton(page: Page, name: string): Promise<void> {
+  const button = page.getByRole("button", { name });
+
+  if (!(await button.isVisible())) {
+    await showMobilePanelIfAvailable(page, "Help");
+  }
+
+  await button.click();
+}
+
+async function showMobilePanelIfAvailable(page: Page, name: "Chat" | "Help" | "Log"): Promise<void> {
+  const tab = page.getByRole("button", { name: new RegExp(`^${name}`) });
+
+  if (await tab.isVisible()) {
+    await tab.click();
+  }
 }

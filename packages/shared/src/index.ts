@@ -20,6 +20,14 @@ export type ParticipantSummary = {
   isConnected: boolean;
 };
 
+export type ChatMessage = {
+  id: string;
+  participantId: string;
+  displayName: string;
+  body: string;
+  sentAt: string;
+};
+
 export type CardSuit = "clubs" | "diamonds" | "hearts" | "spades";
 
 export type CardRank =
@@ -107,6 +115,7 @@ export type TableSnapshot = {
   spectators: ParticipantSummary[];
   seatedPlayerCount: number;
   spectatorCount: number;
+  chatMessages: ChatMessage[];
   hasHandStarted: boolean;
   hand: HandSnapshot;
   availableControls: AvailableControls;
@@ -167,6 +176,11 @@ export type RemovePlayerPayload = {
 
 export type HostAutoFoldInactivePayload = {
   tableId: string;
+};
+
+export type SendChatMessagePayload = {
+  tableId: string;
+  body: string;
 };
 
 export type TableSessionResponse = {

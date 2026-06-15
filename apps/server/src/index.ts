@@ -10,6 +10,7 @@ import type {
   RejoinPayload,
   RemovePlayerPayload,
   SeatSpectatorPayload,
+  SendChatMessagePayload,
   SitOutPayload,
   StartHandPayload,
   TableCommandResponse
@@ -25,6 +26,9 @@ const tableStore = createTableStore(config.defaults, config.clientOrigin);
 const socketsByParticipant = new Map<string, Set<string>>();
 const participantBySocket = new Map<string, { tableId: string; participantId: string }>();
 const disconnectedActionTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const rejectedCommandTimestampsBySocket = new Map<string, number[]>();
+const INVALID_COMMAND_RATE_LIMIT_WINDOW_MS = 10_000;
+const INVALID_COMMAND_RATE_LIMIT_MAX = 4;
 const httpServer = createServer((_request, response) => {
   response.writeHead(200, { "content-type": "application/json" });
   response.end(JSON.stringify({ ok: true, service: "friendly-holdem-server" }));
@@ -40,11 +44,15 @@ io.on("connection", (socket) => {
   logger.info("socket connected", { socketId: socket.id });
   let activeTableId: string | undefined;
   let activeParticipantId: string | undefined;
+  const runSocketTableCommand = (
+    reply: ((response: TableCommandResponse) => void) | undefined,
+    command: () => TableCommandResponse
+  ) => runTableCommand(reply, command, socket.id);
 
   socket.on(
     "table:create",
     (payload: CreateTablePayload, reply?: (response: TableCommandResponse) => void) => {
-      runTableCommand(reply, () => {
+      runSocketTableCommand(reply, () => {
         const response = tableStore.createTable(payload.displayName);
         activeTableId = response.snapshot.tableId;
         activeParticipantId = response.snapshot.viewerParticipantId;
@@ -61,7 +69,7 @@ io.on("connection", (socket) => {
   );
 
   socket.on("table:join", (payload: JoinTablePayload, reply?: (response: TableCommandResponse) => void) => {
-    runTableCommand(reply, () => {
+    runSocketTableCommand(reply, () => {
       const response = tableStore.joinTable(payload.tableId, payload.displayName, payload.sessionToken);
       activeTableId = response.snapshot.tableId;
       activeParticipantId = response.snapshot.viewerParticipantId;
@@ -83,7 +91,7 @@ io.on("connection", (socket) => {
   socket.on(
     "player:reconnect",
     (payload: ReconnectPlayerPayload, reply?: (response: TableCommandResponse) => void) => {
-      runTableCommand(reply, () => {
+      runSocketTableCommand(reply, () => {
         const response = tableStore.reconnectTable(payload.tableId, payload.sessionToken);
         activeTableId = response.snapshot.tableId;
         activeParticipantId = response.snapshot.viewerParticipantId;
@@ -102,7 +110,7 @@ io.on("connection", (socket) => {
   );
 
   socket.on("hand:start", (payload: StartHandPayload, reply?: (response: TableCommandResponse) => void) => {
-    runTableCommand(reply, () => {
+    runSocketTableCommand(reply, () => {
       const participant = participantBySocket.get(socket.id);
 
       if (!participant || participant.tableId !== payload.tableId) {
@@ -123,7 +131,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("hand:next", (payload: DealNextHandPayload, reply?: (response: TableCommandResponse) => void) => {
-    runTableCommand(reply, () => {
+    runSocketTableCommand(reply, () => {
       const participant = participantBySocket.get(socket.id);
 
       if (!participant || participant.tableId !== payload.tableId) {
@@ -144,7 +152,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("player:action", (payload: PlayerActionPayload, reply?: (response: TableCommandResponse) => void) => {
-    runTableCommand(reply, () => {
+    runSocketTableCommand(reply, () => {
       const participant = participantBySocket.get(socket.id);
 
       if (!participant || participant.tableId !== payload.tableId) {
@@ -170,7 +178,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("player:sitOut", (payload: SitOutPayload, reply?: (response: TableCommandResponse) => void) => {
-    runTableCommand(reply, () => {
+    runSocketTableCommand(reply, () => {
       const participant = participantBySocket.get(socket.id);
 
       if (!participant || participant.tableId !== payload.tableId) {
@@ -185,7 +193,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("player:rejoin", (payload: RejoinPayload, reply?: (response: TableCommandResponse) => void) => {
-    runTableCommand(reply, () => {
+    runSocketTableCommand(reply, () => {
       const participant = participantBySocket.get(socket.id);
 
       if (!participant || participant.tableId !== payload.tableId) {
@@ -200,7 +208,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("host:approveRebuy", (payload: ApproveRebuyPayload, reply?: (response: TableCommandResponse) => void) => {
-    runTableCommand(reply, () => {
+    runSocketTableCommand(reply, () => {
       const participant = participantBySocket.get(socket.id);
 
       if (!participant || participant.tableId !== payload.tableId) {
@@ -220,7 +228,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("host:seatSpectator", (payload: SeatSpectatorPayload, reply?: (response: TableCommandResponse) => void) => {
-    runTableCommand(reply, () => {
+    runSocketTableCommand(reply, () => {
       const participant = participantBySocket.get(socket.id);
 
       if (!participant || participant.tableId !== payload.tableId) {
@@ -235,7 +243,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("host:removePlayer", (payload: RemovePlayerPayload, reply?: (response: TableCommandResponse) => void) => {
-    runTableCommand(reply, () => {
+    runSocketTableCommand(reply, () => {
       const participant = participantBySocket.get(socket.id);
 
       if (!participant || participant.tableId !== payload.tableId) {
@@ -257,7 +265,7 @@ io.on("connection", (socket) => {
   socket.on(
     "host:autoFoldInactive",
     (payload: HostAutoFoldInactivePayload, reply?: (response: TableCommandResponse) => void) => {
-      runTableCommand(reply, () => {
+      runSocketTableCommand(reply, () => {
         const participant = participantBySocket.get(socket.id);
 
         if (!participant || participant.tableId !== payload.tableId) {
@@ -275,6 +283,20 @@ io.on("connection", (socket) => {
       });
     }
   );
+
+  socket.on("chat:send", (payload: SendChatMessagePayload, reply?: (response: TableCommandResponse) => void) => {
+    runSocketTableCommand(reply, () => {
+      const participant = participantBySocket.get(socket.id);
+
+      if (!participant || participant.tableId !== payload.tableId) {
+        throw new Error("Join the table before chatting.");
+      }
+
+      const response = tableStore.sendChatMessage(payload.tableId, participant.participantId, payload.body);
+      broadcastSnapshots(payload.tableId);
+      return response;
+    });
+  });
 
   socket.on("disconnect", (reason) => {
     const activeParticipant = participantBySocket.get(socket.id);
@@ -310,15 +332,33 @@ httpServer.listen(config.port, () => {
 
 function runTableCommand(
   reply: ((response: TableCommandResponse) => void) | undefined,
-  command: () => TableCommandResponse
+  command: () => TableCommandResponse,
+  socketId?: string
 ): void {
   try {
     const response = command();
     reply?.(response);
   } catch (error) {
-    const reason = error instanceof Error ? error.message : "Command failed.";
+    const reason =
+      socketId && isInvalidCommandRateLimited(socketId)
+        ? "Too many invalid commands. Please wait a moment."
+        : error instanceof Error
+          ? error.message
+          : "Command failed.";
     reply?.({ ok: false, reason });
   }
+}
+
+function isInvalidCommandRateLimited(socketId: string): boolean {
+  const nowMs = Date.now();
+  const recentTimestamps = (rejectedCommandTimestampsBySocket.get(socketId) ?? []).filter(
+    (timestamp) => nowMs - timestamp < INVALID_COMMAND_RATE_LIMIT_WINDOW_MS
+  );
+
+  recentTimestamps.push(nowMs);
+  rejectedCommandTimestampsBySocket.set(socketId, recentTimestamps);
+
+  return recentTimestamps.length > INVALID_COMMAND_RATE_LIMIT_MAX;
 }
 
 function broadcastSnapshots(tableId: string): void {

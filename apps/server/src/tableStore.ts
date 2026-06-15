@@ -3,6 +3,7 @@ import type {
   Card,
   CardRank,
   CardSuit,
+  ChatMessage,
   HandSnapshot,
   LegalAction,
   TableDefaults,
@@ -13,6 +14,8 @@ import type {
 
 const MAX_SEATS = 6;
 const MAX_DISPLAY_NAME_LENGTH = 32;
+const MAX_CHAT_MESSAGE_LENGTH = 180;
+const CHAT_RATE_LIMIT_MS = 1500;
 
 type ParticipantKind = "player" | "spectator";
 
@@ -25,6 +28,7 @@ export type Participant = {
   stack: number;
   isSittingOut: boolean;
   isConnected: boolean;
+  lastChatSentAt: number | null;
 };
 
 type HandParticipantState = {
@@ -68,6 +72,7 @@ export type PrivateTable = {
   participantIdsByToken: Map<string, string>;
   hasHandStarted: boolean;
   hand: ActiveHand | null;
+  chatMessages: ChatMessage[];
   defaults: TableDefaults;
 };
 
@@ -86,6 +91,7 @@ export function createTableStore(defaults: TableDefaults, origin?: string, now: 
       participantIdsByToken: new Map([[host.sessionToken, host.id]]),
       hasHandStarted: false,
       hand: null,
+      chatMessages: [],
       defaults
     };
 
@@ -435,6 +441,36 @@ export function createTableStore(defaults: TableDefaults, origin?: string, now: 
     };
   }
 
+  function sendChatMessage(tableId: string, participantId: string, body: string): TableSessionResponse {
+    const table = getExistingTable(tables, tableId);
+    const participant = requireParticipant(table, participantId);
+    const nowMs = now();
+
+    if (participant.lastChatSentAt !== null && nowMs - participant.lastChatSentAt < CHAT_RATE_LIMIT_MS) {
+      throw new Error("Chat is moving too fast. Please wait a moment.");
+    }
+
+    const normalizedBody = normalizeChatBody(body);
+    participant.lastChatSentAt = nowMs;
+    table.chatMessages.push({
+      id: randomToken(12),
+      participantId: participant.id,
+      displayName: participant.displayName,
+      body: escapeHtml(normalizedBody),
+      sentAt: new Date(nowMs).toISOString()
+    });
+
+    if (table.chatMessages.length > table.defaults.eventLogCap) {
+      table.chatMessages.splice(0, table.chatMessages.length - table.defaults.eventLogCap);
+    }
+
+    return {
+      ok: true,
+      sessionToken: participant.sessionToken,
+      snapshot: createSnapshot(table, participant.id, origin, now)
+    };
+  }
+
   function getTable(tableId: string): PrivateTable | undefined {
     return tables.get(tableId);
   }
@@ -455,6 +491,7 @@ export function createTableStore(defaults: TableDefaults, origin?: string, now: 
     approveRebuy,
     seatSpectator,
     removePlayer,
+    sendChatMessage,
     getTable
   };
 }
@@ -473,7 +510,8 @@ function createParticipant(
     seatNumber,
     stack,
     isSittingOut: false,
-    isConnected: true
+    isConnected: true,
+    lastChatSentAt: null
   };
 }
 
@@ -519,6 +557,7 @@ function createSnapshot(
     spectators,
     seatedPlayerCount: seats.filter((seat) => seat.player).length,
     spectatorCount: spectators.length,
+    chatMessages: table.chatMessages,
     hasHandStarted: table.hasHandStarted,
     hand: createHandSnapshot(table, viewer),
     availableControls: {
@@ -1414,4 +1453,27 @@ function normalizeDisplayName(displayName: string): string {
   }
 
   return normalized;
+}
+
+function normalizeChatBody(body: string): string {
+  const normalized = body.trim().replace(/\s+/g, " ");
+
+  if (!normalized) {
+    throw new Error("Chat message is required.");
+  }
+
+  if (normalized.length > MAX_CHAT_MESSAGE_LENGTH) {
+    throw new Error(`Chat message must be ${MAX_CHAT_MESSAGE_LENGTH} characters or fewer.`);
+  }
+
+  return normalized;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }

@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useMemo, useState } from "react";
+import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { io, type Socket } from "socket.io-client";
 import type {
@@ -13,6 +13,7 @@ import type {
   RejoinPayload,
   RemovePlayerPayload,
   SeatSpectatorPayload,
+  SendChatMessagePayload,
   SitOutPayload,
   StartHandPayload,
   TableCommandResponse,
@@ -164,6 +165,24 @@ function App() {
     }
   }
 
+  async function sendChatMessage(body: string) {
+    if (!socket || !snapshot) {
+      return;
+    }
+
+    setError(null);
+
+    try {
+      const response = await emitCommand<SendChatMessagePayload>(socket, "chat:send", {
+        tableId: snapshot.tableId,
+        body
+      });
+      handleSessionResponse(response);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Unable to send chat message.");
+    }
+  }
+
   function handleSessionResponse(response: TableCommandResponse): TableSnapshot {
     if (!response.ok) {
       throw new Error(response.reason);
@@ -196,6 +215,7 @@ function App() {
             inviteLink={inviteLink}
             snapshot={snapshot}
             onPlayerAction={playerAction}
+            onSendChatMessage={sendChatMessage}
             onTableCommand={tableCommand}
             onStartHand={startHand}
           />
@@ -295,6 +315,7 @@ function TableRoom({
   snapshot,
   inviteLink,
   onPlayerAction,
+  onSendChatMessage,
   onTableCommand,
   onStartHand
 }: {
@@ -302,11 +323,18 @@ function TableRoom({
   snapshot: TableSnapshot;
   inviteLink: string;
   onPlayerAction: (action: PlayerActionPayload["action"], raiseTo?: number) => void;
+  onSendChatMessage: (body: string) => void;
   onTableCommand: <TPayload>(eventName: string, payload: TPayload, fallbackMessage: string) => void;
   onStartHand: () => void;
 }) {
   const [raiseTo, setRaiseTo] = useState(() => String(snapshot.hand.currentBet + snapshot.defaults.blinds.bigBlind));
   const [nowMs, setNowMs] = useState(Date.now);
+  const [activeMobilePanel, setActiveMobilePanel] = useState<"log" | "chat" | "help">("log");
+  const [chatDraft, setChatDraft] = useState("");
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [openTutorial, setOpenTutorial] = useState<"beginner" | "host" | null>(null);
+  const previousChatCountRef = useRef(snapshot.chatMessages.length);
+  const wasViewerTurnRef = useRef(false);
   const host = snapshot.seats
     .map((seat) => seat.player)
     .find((player) => player?.isHost);
@@ -323,6 +351,8 @@ function TableRoom({
     Boolean(currentActor?.isConnected) &&
     !currentActor?.isAllIn &&
     currentActorInactiveForMs >= snapshot.defaults.hostAutoFoldAfterMs;
+  const isViewerTurn =
+    snapshot.hand.currentActorId === snapshot.viewerParticipantId && snapshot.hand.legalActions.length > 0;
 
   useEffect(() => {
     setRaiseTo(String(minimumRaiseTo));
@@ -335,8 +365,51 @@ function TableRoom({
     return () => window.clearInterval(timer);
   }, [snapshot.hand.currentActorSince]);
 
+  useEffect(() => {
+    const previousCount = previousChatCountRef.current;
+
+    if (snapshot.chatMessages.length > previousCount && activeMobilePanel !== "chat") {
+      setUnreadChatCount((count) => count + snapshot.chatMessages.length - previousCount);
+    }
+
+    previousChatCountRef.current = snapshot.chatMessages.length;
+  }, [activeMobilePanel, snapshot.chatMessages.length]);
+
+  useEffect(() => {
+    if (activeMobilePanel === "chat") {
+      setUnreadChatCount(0);
+    }
+  }, [activeMobilePanel]);
+
+  useEffect(() => {
+    const originalTitle = "Friendly Hold'em";
+    document.title = isViewerTurn ? "Your turn - Friendly Hold'em" : originalTitle;
+
+    if (isViewerTurn && !wasViewerTurnRef.current && "vibrate" in navigator) {
+      navigator.vibrate?.(80);
+    }
+
+    wasViewerTurnRef.current = isViewerTurn;
+
+    return () => {
+      document.title = originalTitle;
+    };
+  }, [isViewerTurn]);
+
+  function submitChat() {
+    const body = chatDraft.trim();
+
+    if (!body) {
+      return;
+    }
+
+    onSendChatMessage(body);
+    setChatDraft("");
+    setActiveMobilePanel("chat");
+  }
+
   return (
-    <div className="table-layout">
+    <div className={`table-layout ${isViewerTurn ? "table-layout--your-turn" : ""}`}>
       <section className="table-summary" aria-labelledby="table-summary-heading">
         <div>
           <p className="eyebrow">{snapshot.viewerRole}</p>
@@ -345,6 +418,14 @@ function TableRoom({
         <div className="invite-box">
           <label htmlFor="invite-link">Invite link</label>
           <input id="invite-link" readOnly value={inviteLink} onFocus={(event) => event.target.select()} />
+        </div>
+        <div className="tutorial-actions" aria-label="Tutorials">
+          <button onClick={() => setOpenTutorial("beginner")} type="button">
+            Beginner tutorial
+          </button>
+          <button onClick={() => setOpenTutorial("host")} type="button">
+            Host tutorial
+          </button>
         </div>
         <dl className="table-metrics" aria-label="Table status">
           <div>
@@ -383,6 +464,30 @@ function TableRoom({
           </div>
         </dl>
       </section>
+
+      <nav className="mobile-tabs" aria-label="Table panels">
+        <button
+          aria-pressed={activeMobilePanel === "log"}
+          onClick={() => setActiveMobilePanel("log")}
+          type="button"
+        >
+          Log
+        </button>
+        <button
+          aria-pressed={activeMobilePanel === "chat"}
+          onClick={() => setActiveMobilePanel("chat")}
+          type="button"
+        >
+          Chat{unreadChatCount > 0 ? ` (${unreadChatCount})` : ""}
+        </button>
+        <button
+          aria-pressed={activeMobilePanel === "help"}
+          onClick={() => setActiveMobilePanel("help")}
+          type="button"
+        >
+          Help
+        </button>
+      </nav>
 
       <section className="felt-panel" aria-labelledby="felt-heading">
         <div className="felt-panel__header">
@@ -470,6 +575,47 @@ function TableRoom({
 
       <aside className="rail-panel" aria-labelledby="rail-heading">
         <h2 id="rail-heading">Rail</h2>
+        <div className="rail-panel__section rail-panel__section--help" data-active={activeMobilePanel === "help"}>
+          <RailControls
+            canHostAutoFoldInactive={canHostAutoFoldInactive}
+            snapshot={snapshot}
+            onStartHand={onStartHand}
+            onTableCommand={onTableCommand}
+          />
+        </div>
+        {error ? <p className="form-error">{error}</p> : null}
+        <div className="rail-panel__section rail-panel__section--log" data-active={activeMobilePanel === "log"}>
+          <ActionLog entries={snapshot.hand.actionLog} />
+        </div>
+        <div className="rail-panel__section rail-panel__section--chat" data-active={activeMobilePanel === "chat"}>
+          <ChatPanel
+            chatDraft={chatDraft}
+            messages={snapshot.chatMessages}
+            onChatDraftChange={setChatDraft}
+            onSubmitChat={submitChat}
+          />
+        </div>
+      </aside>
+      {openTutorial ? <TutorialDialog kind={openTutorial} onClose={() => setOpenTutorial(null)} /> : null}
+    </div>
+  );
+}
+
+function RailControls({
+  canHostAutoFoldInactive,
+  snapshot,
+  onStartHand,
+  onTableCommand
+}: {
+  canHostAutoFoldInactive: boolean;
+  snapshot: TableSnapshot;
+  onStartHand: () => void;
+  onTableCommand: <TPayload>(eventName: string, payload: TPayload, fallbackMessage: string) => void;
+}) {
+  return (
+    <>
+      <div className="spectator-list">
+        <h3>Spectators</h3>
         {snapshot.spectators.length > 0 ? (
           <ul>
             {snapshot.spectators.map((spectator) => (
@@ -482,138 +628,225 @@ function TableRoom({
         ) : (
           <p>No spectators yet.</p>
         )}
-        <div className="control-strip" aria-label="Available controls">
-          <button disabled={!snapshot.availableControls.canStartHand} onClick={onStartHand} type="button">
-            Start hand
-          </button>
-          <button
-            disabled={!canHostAutoFoldInactive}
-            onClick={() =>
-              onTableCommand<HostAutoFoldInactivePayload>(
-                "host:autoFoldInactive",
-                { tableId: snapshot.tableId },
-                "Unable to auto-fold inactive player."
-              )
-            }
-            type="button"
-          >
-            Auto-fold inactive
-          </button>
-          <button
-            disabled={!snapshot.availableControls.canDealNextHand}
-            onClick={() =>
-              onTableCommand<DealNextHandPayload>(
-                "hand:next",
-                { tableId: snapshot.tableId },
-                "Unable to deal next hand."
-              )
-            }
-            type="button"
-          >
-            Deal next hand
-          </button>
-          <button
-            disabled={!snapshot.availableControls.canSitOut}
-            onClick={() =>
-              onTableCommand<SitOutPayload>(
-                "player:sitOut",
-                { tableId: snapshot.tableId },
-                "Unable to sit out."
-              )
-            }
-            type="button"
-          >
-            Sit out
-          </button>
-          <button
-            disabled={!snapshot.availableControls.canRejoin}
-            onClick={() =>
-              onTableCommand<RejoinPayload>("player:rejoin", { tableId: snapshot.tableId }, "Unable to rejoin.")
-            }
-            type="button"
-          >
-            Rejoin
-          </button>
-        </div>
-        {snapshot.isHost ? (
-          <div className="host-controls" aria-label="Host table controls">
-            {snapshot.spectators.length > 0 ? (
-              <div>
-                <h3>Spectators</h3>
-                {snapshot.spectators.map((spectator) => (
+      </div>
+      <div className="control-strip" aria-label="Available controls">
+        <button disabled={!snapshot.availableControls.canStartHand} onClick={onStartHand} type="button">
+          Start hand
+        </button>
+        <button
+          disabled={!canHostAutoFoldInactive}
+          onClick={() =>
+            onTableCommand<HostAutoFoldInactivePayload>(
+              "host:autoFoldInactive",
+              { tableId: snapshot.tableId },
+              "Unable to auto-fold inactive player."
+            )
+          }
+          type="button"
+        >
+          Auto-fold inactive
+        </button>
+        <button
+          disabled={!snapshot.availableControls.canDealNextHand}
+          onClick={() =>
+            onTableCommand<DealNextHandPayload>(
+              "hand:next",
+              { tableId: snapshot.tableId },
+              "Unable to deal next hand."
+            )
+          }
+          type="button"
+        >
+          Deal next hand
+        </button>
+        <button
+          disabled={!snapshot.availableControls.canSitOut}
+          onClick={() =>
+            onTableCommand<SitOutPayload>("player:sitOut", { tableId: snapshot.tableId }, "Unable to sit out.")
+          }
+          type="button"
+        >
+          Sit out
+        </button>
+        <button
+          disabled={!snapshot.availableControls.canRejoin}
+          onClick={() =>
+            onTableCommand<RejoinPayload>("player:rejoin", { tableId: snapshot.tableId }, "Unable to rejoin.")
+          }
+          type="button"
+        >
+          Rejoin
+        </button>
+      </div>
+      {snapshot.isHost ? (
+        <div className="host-controls" aria-label="Host table controls">
+          {snapshot.spectators.length > 0 ? (
+            <div>
+              <h3>Seat spectators</h3>
+              {snapshot.spectators.map((spectator) => (
+                <button
+                  disabled={!snapshot.availableControls.canSeatSpectators}
+                  key={spectator.id}
+                  onClick={() =>
+                    onTableCommand<SeatSpectatorPayload>(
+                      "host:seatSpectator",
+                      { tableId: snapshot.tableId, participantId: spectator.id },
+                      "Unable to seat spectator."
+                    )
+                  }
+                  type="button"
+                >
+                  Seat {spectator.displayName}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div>
+            <h3>Players</h3>
+            {snapshot.seats
+              .map((seat) => seat.player)
+              .filter(isSeatPlayer)
+              .filter((player) => !player.isHost)
+              .map((player) => (
+                <div className="host-controls__row" key={player.id}>
+                  <span>{player.displayName}</span>
                   <button
-                    disabled={!snapshot.availableControls.canSeatSpectators}
-                    key={spectator.id}
+                    disabled={snapshot.hand.phase !== "settled" && snapshot.hand.phase !== "waiting"}
                     onClick={() =>
-                      onTableCommand<SeatSpectatorPayload>(
-                        "host:seatSpectator",
-                        { tableId: snapshot.tableId, participantId: spectator.id },
-                        "Unable to seat spectator."
+                      onTableCommand<ApproveRebuyPayload>(
+                        "host:approveRebuy",
+                        { tableId: snapshot.tableId, participantId: player.id },
+                        "Unable to approve rebuy."
                       )
                     }
                     type="button"
                   >
-                    Seat {spectator.displayName}
+                    Rebuy
                   </button>
-                ))}
-              </div>
-            ) : null}
-            <div>
-              <h3>Players</h3>
-              {snapshot.seats
-                .map((seat) => seat.player)
-                .filter(isSeatPlayer)
-                .filter((player) => !player.isHost)
-                .map((player) => (
-                  <div className="host-controls__row" key={player.id}>
-                    <span>{player.displayName}</span>
-                    <button
-                      disabled={snapshot.hand.phase !== "settled" && snapshot.hand.phase !== "waiting"}
-                      onClick={() =>
-                        onTableCommand<ApproveRebuyPayload>(
-                          "host:approveRebuy",
-                          { tableId: snapshot.tableId, participantId: player.id },
-                          "Unable to approve rebuy."
-                        )
-                      }
-                      type="button"
-                    >
-                      Rebuy
-                    </button>
-                    <button
-                      disabled={
-                        player.isConnected || (snapshot.hand.phase !== "settled" && snapshot.hand.phase !== "waiting")
-                      }
-                      onClick={() =>
-                        onTableCommand<RemovePlayerPayload>(
-                          "host:removePlayer",
-                          { tableId: snapshot.tableId, participantId: player.id },
-                          "Unable to remove player."
-                        )
-                      }
-                      type="button"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-            </div>
-          </div>
-        ) : null}
-        {error ? <p className="form-error">{error}</p> : null}
-        <div className="action-log" aria-label="Public action log">
-          <h3>Action log</h3>
-          {snapshot.hand.actionLog.length > 0 ? (
-            <ol>
-              {snapshot.hand.actionLog.map((entry, index) => (
-                <li key={`${entry}-${index}`}>{entry}</li>
+                  <button
+                    disabled={
+                      player.isConnected || (snapshot.hand.phase !== "settled" && snapshot.hand.phase !== "waiting")
+                    }
+                    onClick={() =>
+                      onTableCommand<RemovePlayerPayload>(
+                        "host:removePlayer",
+                        { tableId: snapshot.tableId, participantId: player.id },
+                        "Unable to remove player."
+                      )
+                    }
+                    type="button"
+                  >
+                    Remove
+                  </button>
+                </div>
               ))}
-            </ol>
-          ) : (
-            <p>No hand actions yet.</p>
-          )}
+          </div>
         </div>
-      </aside>
+      ) : null}
+    </>
+  );
+}
+
+function ActionLog({ entries }: { entries: string[] }) {
+  return (
+    <div className="action-log" aria-label="Public action log">
+      <h3>Action log</h3>
+      {entries.length > 0 ? (
+        <ol>
+          {entries.map((entry, index) => (
+            <li key={`${entry}-${index}`}>{entry}</li>
+          ))}
+        </ol>
+      ) : (
+        <p>No hand actions yet.</p>
+      )}
+    </div>
+  );
+}
+
+function ChatPanel({
+  chatDraft,
+  messages,
+  onChatDraftChange,
+  onSubmitChat
+}: {
+  chatDraft: string;
+  messages: TableSnapshot["chatMessages"];
+  onChatDraftChange: (body: string) => void;
+  onSubmitChat: () => void;
+}) {
+  return (
+    <section className="chat-panel" aria-label="Table chat">
+      <h3>Chat</h3>
+      <ol className="chat-messages">
+        {messages.length > 0 ? (
+          messages.map((message) => (
+            <li key={message.id}>
+              <strong>{message.displayName}</strong>
+              <span>{formatTime(message.sentAt)}</span>
+              <p>{message.body}</p>
+            </li>
+          ))
+        ) : (
+          <li className="chat-messages__empty">No messages yet.</li>
+        )}
+      </ol>
+      <form
+        className="chat-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmitChat();
+        }}
+      >
+        <label htmlFor="chat-message">Message</label>
+        <textarea
+          id="chat-message"
+          maxLength={180}
+          value={chatDraft}
+          onChange={(event) => onChatDraftChange(event.target.value)}
+        />
+        <button disabled={!chatDraft.trim()} type="submit">
+          Send
+        </button>
+      </form>
+    </section>
+  );
+}
+
+function TutorialDialog({ kind, onClose }: { kind: "beginner" | "host"; onClose: () => void }) {
+  const isBeginner = kind === "beginner";
+  const title = isBeginner ? "Beginner tutorial" : "Host tutorial";
+  const steps = isBeginner
+    ? [
+        "Each hand starts with blinds, then every active player receives two private hole cards.",
+        "The board is dealt in streets: flop, turn, and river, with betting before and after each street.",
+        "On your turn you may fold, check, call, raise, or move all-in when that action is legal.",
+        "All-in players stay eligible for pots they helped build; side pots separate chips they cannot win.",
+        "At showdown, eligible hands reveal and the best five-card hand wins: high card through straight flush."
+      ]
+    : [
+        "Create a table, copy the invite link, and share it with friends privately.",
+        "Before the first hand, joiners auto-seat until six seats are filled; later joiners watch as spectators.",
+        "Use Start hand for hand one, then Deal next hand after settlement.",
+        "Between hands you can seat spectators, approve rebuys, and remove away seated players.",
+        "If a connected player stalls on their turn, the host auto-fold control appears after the inactivity window."
+      ];
+
+  return (
+    <div className="tutorial-dialog" role="dialog" aria-modal="true" aria-labelledby="tutorial-title">
+      <div className="tutorial-dialog__panel">
+        <div className="tutorial-dialog__header">
+          <h2 id="tutorial-title">{title}</h2>
+          <button onClick={onClose} type="button">
+            Close
+          </button>
+        </div>
+        <ol>
+          {steps.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ol>
+      </div>
     </div>
   );
 }
@@ -727,6 +960,13 @@ function formatDuration(milliseconds: number): string {
   const remainingSeconds = seconds % 60;
 
   return minutes > 0 ? `${minutes}m ${remainingSeconds}s` : `${remainingSeconds}s`;
+}
+
+function formatTime(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(new Date(value));
 }
 
 function suitSymbol(suit: Card["suit"]): string {

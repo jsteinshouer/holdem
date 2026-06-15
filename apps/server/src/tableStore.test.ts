@@ -222,6 +222,52 @@ describe("table store", () => {
     expect(snapshotJson).not.toContain(host.sessionToken);
   });
 
+  it("stores bounded escaped table chat messages for players and spectators", () => {
+    let now = 0;
+    const store = createTableStore({ ...defaults, eventLogCap: 2 }, undefined, () => now);
+    const host = store.createTable("Host");
+    const player = store.joinTable(host.snapshot.tableId, "Grace");
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    const spectator = store.joinTable(host.snapshot.tableId, "Watcher");
+
+    const firstChat = store.sendChatMessage(host.snapshot.tableId, host.snapshot.viewerParticipantId, "<hello>");
+
+    expect(firstChat.snapshot.chatMessages[0]?.body).toBe("&lt;hello&gt;");
+
+    now += 1500;
+    store.sendChatMessage(host.snapshot.tableId, player.snapshot.viewerParticipantId, "nice hand");
+    now += 1500;
+    const response = store.sendChatMessage(
+      host.snapshot.tableId,
+      spectator.snapshot.viewerParticipantId,
+      "good luck"
+    );
+
+    expect(response.snapshot.chatMessages).toHaveLength(2);
+    expect(response.snapshot.chatMessages[0]?.body).toBe("nice hand");
+    expect(response.snapshot.chatMessages[1]?.displayName).toBe("Watcher");
+    expect(store.snapshotFor(host.snapshot.tableId, host.snapshot.viewerParticipantId).chatMessages[1]?.body).toBe(
+      "good luck"
+    );
+  });
+
+  it("rate-limits repeated chat messages from the same participant", () => {
+    let now = 0;
+    const store = createTableStore(defaults, undefined, () => now);
+    const host = store.createTable("Host");
+
+    store.sendChatMessage(host.snapshot.tableId, host.snapshot.viewerParticipantId, "first");
+
+    expect(() =>
+      store.sendChatMessage(host.snapshot.tableId, host.snapshot.viewerParticipantId, "second")
+    ).toThrow("Chat is moving too fast. Please wait a moment.");
+
+    now += 1500;
+    expect(store.sendChatMessage(host.snapshot.tableId, host.snapshot.viewerParticipantId, "second").snapshot.chatMessages)
+      .toHaveLength(2);
+  });
+
   it("lets the host start the first hand with blinds, private cards, and preflop action", () => {
     const store = createTableStore(defaults);
     const host = store.createTable("Host");
