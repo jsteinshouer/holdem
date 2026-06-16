@@ -329,8 +329,9 @@ function TableRoom({
   onStartHand: () => void;
 }) {
   const [raiseTo, setRaiseTo] = useState(() => String(snapshot.hand.currentBet + snapshot.defaults.blinds.bigBlind));
+  const [isRaiseSheetOpen, setIsRaiseSheetOpen] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now);
-  const [activeMobilePanel, setActiveMobilePanel] = useState<"log" | "chat" | "help">("log");
+  const [activeMobilePanel, setActiveMobilePanel] = useState<"log" | "chat" | "players" | "manage">("log");
   const [chatDraft, setChatDraft] = useState("");
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [openTutorial, setOpenTutorial] = useState<"beginner" | "host" | null>(null);
@@ -342,8 +343,18 @@ function TableRoom({
   const currentActor = snapshot.seats
     .map((seat) => seat.player)
     .find((player) => player?.id === snapshot.hand.currentActorId);
+  const viewerPlayer = snapshot.seats
+    .map((seat) => seat.player)
+    .find((player) => player?.id === snapshot.viewerParticipantId);
   const minimumRaiseTo = snapshot.hand.currentBet + snapshot.defaults.blinds.bigBlind;
+  const maximumRaiseTo = viewerPlayer ? viewerPlayer.currentBet + viewerPlayer.stack : minimumRaiseTo;
   const canRaise = snapshot.hand.legalActions.includes("raise");
+  const parsedRaiseTo = Number(raiseTo);
+  const isRaiseToValid =
+    canRaise &&
+    Number.isInteger(parsedRaiseTo) &&
+    parsedRaiseTo >= minimumRaiseTo &&
+    parsedRaiseTo <= maximumRaiseTo;
   const currentActorInactiveForMs =
     snapshot.hand.currentActorSince === null ? 0 : Math.max(0, nowMs - snapshot.hand.currentActorSince);
   const canHostAutoFoldInactive =
@@ -354,6 +365,7 @@ function TableRoom({
     currentActorInactiveForMs >= snapshot.defaults.hostAutoFoldAfterMs;
   const isViewerTurn =
     snapshot.hand.currentActorId === snapshot.viewerParticipantId && snapshot.hand.legalActions.length > 0;
+  const latestPublicAction = snapshot.hand.actionLog.at(-1) ?? "No public action yet.";
 
   useEffect(() => {
     setRaiseTo(String(minimumRaiseTo));
@@ -407,6 +419,15 @@ function TableRoom({
     onSendChatMessage(body);
     setChatDraft("");
     setActiveMobilePanel("chat");
+  }
+
+  function submitRaise(nextRaiseTo = parsedRaiseTo) {
+    if (!Number.isInteger(nextRaiseTo) || nextRaiseTo < minimumRaiseTo || nextRaiseTo > maximumRaiseTo) {
+      return;
+    }
+
+    onPlayerAction("raise", nextRaiseTo);
+    setIsRaiseSheetOpen(false);
   }
 
   return (
@@ -466,6 +487,29 @@ function TableRoom({
         </dl>
       </section>
 
+      <section className="mobile-hand-status" aria-label="Hand console status">
+        <div>
+          <span>Phase</span>
+          <strong>{formatPhase(snapshot.hand.phase)}</strong>
+        </div>
+        <div>
+          <span>Pot</span>
+          <strong>${snapshot.hand.pot}</strong>
+        </div>
+        <div>
+          <span>To call</span>
+          <strong>${snapshot.hand.callAmount}</strong>
+        </div>
+        <div>
+          <span>Current bet</span>
+          <strong>${snapshot.hand.currentBet}</strong>
+        </div>
+        <div>
+          <span>Action</span>
+          <strong>{currentActor?.displayName ?? "Waiting"}</strong>
+        </div>
+      </section>
+
       <nav className="mobile-tabs" aria-label="Table panels">
         <button
           aria-pressed={activeMobilePanel === "log"}
@@ -482,11 +526,18 @@ function TableRoom({
           Chat{unreadChatCount > 0 ? ` (${unreadChatCount})` : ""}
         </button>
         <button
-          aria-pressed={activeMobilePanel === "help"}
-          onClick={() => setActiveMobilePanel("help")}
+          aria-pressed={activeMobilePanel === "players"}
+          onClick={() => setActiveMobilePanel("players")}
           type="button"
         >
-          Help
+          Players
+        </button>
+        <button
+          aria-pressed={activeMobilePanel === "manage"}
+          onClick={() => setActiveMobilePanel("manage")}
+          type="button"
+        >
+          Manage
         </button>
       </nav>
 
@@ -518,65 +569,52 @@ function TableRoom({
           </div>
         </div>
 
+        <p className="latest-action" aria-live="polite">
+          <span>Latest action</span>
+          {latestPublicAction}
+        </p>
+
         <ActionBar
           canRaise={canRaise}
+          callAmount={snapshot.hand.callAmount}
           legalActions={snapshot.hand.legalActions}
           minimumRaiseTo={minimumRaiseTo}
+          maximumRaiseTo={maximumRaiseTo}
           raiseTo={raiseTo}
+          isRaiseToValid={isRaiseToValid}
           onAction={onPlayerAction}
+          onOpenRaiseSheet={() => setIsRaiseSheetOpen(true)}
           onRaiseToChange={setRaiseTo}
         />
       </section>
 
+      <section className="mobile-player-strip" aria-label="Compact seated players">
+        {snapshot.seats.map((seat) => (
+          <CompactSeat seat={seat} key={seat.seatNumber} />
+        ))}
+      </section>
+
       <section className="seat-grid" aria-label="Seated players">
         {snapshot.seats.map((seat) => (
-          <article className={`seat ${seat.player?.isCurrentActor ? "seat--acting" : ""}`} key={seat.seatNumber}>
-            <span className="seat__number">Seat {seat.seatNumber + 1}</span>
-            {seat.player ? (
-              <>
-                <div className="seat__title">
-                  <strong>{seat.player.displayName}</strong>
-                  <span>${seat.player.stack}</span>
-                </div>
-                <div className="seat__badges" aria-label={`${seat.player.displayName} seat status`}>
-                  {seat.player.isButton ? <span>Button</span> : null}
-                  {seat.player.isSmallBlind ? <span>Small blind</span> : null}
-                  {seat.player.isBigBlind ? <span>Big blind</span> : null}
-                  {seat.player.hasCards ? <span>Cards dealt</span> : null}
-                  {seat.player.hasFolded ? <span>Folded</span> : null}
-                  {seat.player.isAllIn ? <span>All-in</span> : null}
-                  {seat.player.isSittingOut ? <span>Sitting out</span> : null}
-                  {seat.player.isBusted ? <span>Busted</span> : null}
-                  {!seat.player.isConnected ? <span>Away</span> : null}
-                  {seat.player.inactiveForMs !== null ? (
-                    <span>Inactive {formatDuration(seat.player.inactiveForMs)}</span>
-                  ) : null}
-                  {seat.player.isHost ? <span>Host</span> : null}
-                </div>
-                {seat.player.visibleHoleCards.length > 0 ? (
-                  <div className="revealed-cards" aria-label={`${seat.player.displayName} revealed cards`}>
-                    {seat.player.visibleHoleCards.map((card) => (
-                      <CardView card={card} key={`${seat.player?.id}-${card.rank}-${card.suit}`} />
-                    ))}
-                  </div>
-                ) : null}
-                <span>
-                  {seat.player.isConnected ? "Connected" : "Away"} / Bet ${seat.player.currentBet}
-                </span>
-              </>
-            ) : (
-              <>
-                <strong>Open</strong>
-                <span>Available before the first hand</span>
-              </>
-            )}
-          </article>
+          <SeatCard seat={seat} key={seat.seatNumber} />
         ))}
       </section>
 
       <aside className="rail-panel" aria-labelledby="rail-heading">
-        <h2 id="rail-heading">Rail</h2>
-        <div className="rail-panel__section rail-panel__section--help" data-active={activeMobilePanel === "help"}>
+        <h2 id="rail-heading">Panels</h2>
+        <div className="rail-panel__section rail-panel__section--manage" data-active={activeMobilePanel === "manage"}>
+          <div className="mobile-resource-actions" aria-label="Invite and tutorials">
+            <div className="invite-box">
+              <label htmlFor="mobile-invite-link">Manage invite link</label>
+              <input id="mobile-invite-link" readOnly value={inviteLink} onFocus={(event) => event.target.select()} />
+            </div>
+            <button onClick={() => setOpenTutorial("beginner")} type="button">
+              Beginner tutorial
+            </button>
+            <button onClick={() => setOpenTutorial("host")} type="button">
+              Host tutorial
+            </button>
+          </div>
           <RailControls
             canHostAutoFoldInactive={canHostAutoFoldInactive}
             snapshot={snapshot}
@@ -596,9 +634,146 @@ function TableRoom({
             onSubmitChat={submitChat}
           />
         </div>
+        <div className="rail-panel__section rail-panel__section--players" data-active={activeMobilePanel === "players"}>
+          <PlayersPanel seats={snapshot.seats} />
+        </div>
       </aside>
+      <div className="mobile-context-controls" aria-label="Contextual host actions">
+        {snapshot.availableControls.canStartHand ? (
+          <button onClick={onStartHand} type="button">
+            Start hand
+          </button>
+        ) : null}
+        {snapshot.availableControls.canDealNextHand ? (
+          <button
+            onClick={() =>
+              onTableCommand<DealNextHandPayload>("hand:next", { tableId: snapshot.tableId }, "Unable to deal next hand.")
+            }
+            type="button"
+          >
+            Deal next hand
+          </button>
+        ) : null}
+        {canHostAutoFoldInactive ? (
+          <button
+            onClick={() =>
+              onTableCommand<HostAutoFoldInactivePayload>(
+                "host:autoFoldInactive",
+                { tableId: snapshot.tableId },
+                "Unable to auto-fold inactive player."
+              )
+            }
+            type="button"
+          >
+            Auto-fold inactive
+          </button>
+        ) : null}
+      </div>
       {openTutorial ? <TutorialDialog kind={openTutorial} onClose={() => setOpenTutorial(null)} /> : null}
+      {isRaiseSheetOpen ? (
+        <RaiseSheet
+          callAmount={snapshot.hand.callAmount}
+          currentBet={snapshot.hand.currentBet}
+          isRaiseToValid={isRaiseToValid}
+          maximumRaiseTo={maximumRaiseTo}
+          minimumRaiseTo={minimumRaiseTo}
+          pot={snapshot.hand.pot}
+          raiseTo={raiseTo}
+          stack={viewerPlayer?.stack ?? 0}
+          onCancel={() => setIsRaiseSheetOpen(false)}
+          onRaiseToChange={setRaiseTo}
+          onSubmit={submitRaise}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function CompactSeat({ seat }: { seat: TableSnapshot["seats"][number] }) {
+  const player = seat.player;
+
+  return (
+    <article className={`compact-seat ${player?.isCurrentActor ? "compact-seat--acting" : ""}`}>
+      <span className="compact-seat__seat">S{seat.seatNumber + 1}</span>
+      {player ? (
+        <>
+          <strong>{player.displayName}</strong>
+          <span>${player.stack}</span>
+          <span>Bet ${player.currentBet}</span>
+          <div aria-label={`${player.displayName} compact status`}>
+            {player.isButton ? <span>D</span> : null}
+            {player.isSmallBlind ? <span>SB</span> : null}
+            {player.isBigBlind ? <span>BB</span> : null}
+            {player.isCurrentActor ? <span>Acting</span> : null}
+            {!player.isConnected ? <span>Away</span> : null}
+            {player.isSittingOut ? <span>Out</span> : null}
+            {player.isBusted ? <span>Busted</span> : null}
+          </div>
+        </>
+      ) : (
+        <>
+          <strong>Open</strong>
+          <span>No player</span>
+        </>
+      )}
+    </article>
+  );
+}
+
+function SeatCard({ seat }: { seat: TableSnapshot["seats"][number] }) {
+  return (
+    <article className={`seat ${seat.player?.isCurrentActor ? "seat--acting" : ""}`}>
+      <span className="seat__number">Seat {seat.seatNumber + 1}</span>
+      {seat.player ? (
+        <>
+          <div className="seat__title">
+            <strong>{seat.player.displayName}</strong>
+            <span>${seat.player.stack}</span>
+          </div>
+          <div className="seat__badges" aria-label={`${seat.player.displayName} seat status`}>
+            {seat.player.isButton ? <span>Button</span> : null}
+            {seat.player.isSmallBlind ? <span>Small blind</span> : null}
+            {seat.player.isBigBlind ? <span>Big blind</span> : null}
+            {seat.player.hasCards ? <span>Cards dealt</span> : null}
+            {seat.player.hasFolded ? <span>Folded</span> : null}
+            {seat.player.isAllIn ? <span>All-in</span> : null}
+            {seat.player.isSittingOut ? <span>Sitting out</span> : null}
+            {seat.player.isBusted ? <span>Busted</span> : null}
+            {!seat.player.isConnected ? <span>Away</span> : null}
+            {seat.player.inactiveForMs !== null ? <span>Inactive {formatDuration(seat.player.inactiveForMs)}</span> : null}
+            {seat.player.isHost ? <span>Host</span> : null}
+          </div>
+          {seat.player.visibleHoleCards.length > 0 ? (
+            <div className="revealed-cards" aria-label={`${seat.player.displayName} revealed cards`}>
+              {seat.player.visibleHoleCards.map((card) => (
+                <CardView card={card} key={`${seat.player?.id}-${card.rank}-${card.suit}`} />
+              ))}
+            </div>
+          ) : null}
+          <span>
+            {seat.player.isConnected ? "Connected" : "Away"} / Bet ${seat.player.currentBet}
+          </span>
+        </>
+      ) : (
+        <>
+          <strong>Open</strong>
+          <span>Available before the first hand</span>
+        </>
+      )}
+    </article>
+  );
+}
+
+function PlayersPanel({ seats }: { seats: TableSnapshot["seats"] }) {
+  return (
+    <section className="players-panel" aria-label="Player details">
+      <h3>Players</h3>
+      <div>
+        {seats.map((seat) => (
+          <SeatCard seat={seat} key={seat.seatNumber} />
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -854,17 +1029,25 @@ function TutorialDialog({ kind, onClose }: { kind: "beginner" | "host"; onClose:
 
 function ActionBar({
   canRaise,
+  callAmount,
   legalActions,
+  maximumRaiseTo,
   minimumRaiseTo,
   raiseTo,
+  isRaiseToValid,
   onAction,
+  onOpenRaiseSheet,
   onRaiseToChange
 }: {
   canRaise: boolean;
+  callAmount: number;
   legalActions: LegalAction[];
+  maximumRaiseTo: number;
   minimumRaiseTo: number;
   raiseTo: string;
+  isRaiseToValid: boolean;
   onAction: (action: PlayerActionPayload["action"], raiseTo?: number) => void;
+  onOpenRaiseSheet: () => void;
   onRaiseToChange: (raiseTo: string) => void;
 }) {
   const actionOrder: PlayerActionPayload["action"][] = ["fold", "check", "call", "all-in"];
@@ -884,19 +1067,28 @@ function ActionBar({
                 {formatAction(action)}
               </button>
             ))}
+            <button className="mobile-raise-trigger" disabled={!canRaise} onClick={onOpenRaiseSheet} type="button">
+              Raise
+            </button>
           </div>
           <div className="raise-control">
             <label htmlFor="raise-to">Raise to</label>
             <input
               disabled={!canRaise}
               id="raise-to"
+              max={maximumRaiseTo}
               min={minimumRaiseTo}
               step={1}
               type="number"
               value={raiseTo}
               onChange={(event) => onRaiseToChange(event.target.value)}
             />
-            <button disabled={!canRaise} onClick={() => onAction("raise", Number(raiseTo))} type="button">
+            <button
+              disabled={!isRaiseToValid}
+              onClick={() => onAction("raise", Number(raiseTo))}
+              title={`Call $${callAmount}, raise min $${minimumRaiseTo}`}
+              type="button"
+            >
               Raise
             </button>
           </div>
@@ -904,6 +1096,113 @@ function ActionBar({
       ) : (
         <span>No action available</span>
       )}
+    </div>
+  );
+}
+
+function RaiseSheet({
+  callAmount,
+  currentBet,
+  isRaiseToValid,
+  maximumRaiseTo,
+  minimumRaiseTo,
+  pot,
+  raiseTo,
+  stack,
+  onCancel,
+  onRaiseToChange,
+  onSubmit
+}: {
+  callAmount: number;
+  currentBet: number;
+  isRaiseToValid: boolean;
+  maximumRaiseTo: number;
+  minimumRaiseTo: number;
+  pot: number;
+  raiseTo: string;
+  stack: number;
+  onCancel: () => void;
+  onRaiseToChange: (raiseTo: string) => void;
+  onSubmit: () => void;
+}) {
+  const presetRaises = [
+    { label: "Min", value: minimumRaiseTo },
+    { label: "Pot", value: Math.min(maximumRaiseTo, Math.max(minimumRaiseTo, currentBet + pot + callAmount)) },
+    { label: "All-in", value: maximumRaiseTo }
+  ];
+
+  return (
+    <div className="raise-sheet" role="dialog" aria-modal="true" aria-labelledby="raise-sheet-title">
+      <form
+        className="raise-sheet__panel"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
+        <div className="raise-sheet__header">
+          <div>
+            <p className="eyebrow">Focused action</p>
+            <h2 id="raise-sheet-title">Raise</h2>
+          </div>
+          <button className="button-secondary" onClick={onCancel} type="button">
+            Cancel
+          </button>
+        </div>
+        <dl className="raise-sheet__metrics" aria-label="Raise context">
+          <div>
+            <dt>Stack</dt>
+            <dd>${stack}</dd>
+          </div>
+          <div>
+            <dt>Pot</dt>
+            <dd>${pot}</dd>
+          </div>
+          <div>
+            <dt>Current bet</dt>
+            <dd>${currentBet}</dd>
+          </div>
+          <div>
+            <dt>Call</dt>
+            <dd>${callAmount}</dd>
+          </div>
+          <div>
+            <dt>Min raise</dt>
+            <dd>${minimumRaiseTo}</dd>
+          </div>
+        </dl>
+        <div className="raise-presets" aria-label="Preset raise choices">
+          {presetRaises.map((preset) => (
+            <button
+              disabled={preset.value < minimumRaiseTo || preset.value > maximumRaiseTo}
+              key={preset.label}
+              onClick={() => onRaiseToChange(String(preset.value))}
+              type="button"
+            >
+              {preset.label} ${preset.value}
+            </button>
+          ))}
+        </div>
+        <label className="raise-exact" htmlFor="raise-sheet-amount">
+          Exact raise to
+          <input
+            id="raise-sheet-amount"
+            inputMode="numeric"
+            max={maximumRaiseTo}
+            min={minimumRaiseTo}
+            step={1}
+            type="number"
+            value={raiseTo}
+            onChange={(event) => onRaiseToChange(event.target.value)}
+          />
+        </label>
+        <p className="raise-sheet__hint">
+          Allowed range ${minimumRaiseTo} to ${maximumRaiseTo}.
+        </p>
+        <button disabled={!isRaiseToValid} type="submit">
+          Confirm raise
+        </button>
+      </form>
     </div>
   );
 }

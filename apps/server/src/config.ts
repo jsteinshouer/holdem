@@ -3,6 +3,7 @@ import type { TableDefaults } from "@friendly-holdem/shared";
 export type ServerConfig = {
   port: number;
   clientOrigin: string;
+  clientCorsOrigins: string[];
   defaults: TableDefaults;
 };
 
@@ -51,6 +52,7 @@ export function loadConfig(env: RawEnvironment = process.env): ServerConfig {
   return {
     port,
     clientOrigin,
+    clientCorsOrigins: clientCorsOriginsFor(clientOrigin),
     defaults: {
       startingStack,
       blinds: {
@@ -62,6 +64,21 @@ export function loadConfig(env: RawEnvironment = process.env): ServerConfig {
       eventLogCap
     }
   };
+}
+
+function clientCorsOriginsFor(clientOrigin: string): string[] {
+  const origins = [clientOrigin];
+  const url = new URL(clientOrigin);
+
+  if (url.hostname === "localhost") {
+    url.hostname = "127.0.0.1";
+    origins.push(url.origin);
+  } else if (url.hostname === "127.0.0.1") {
+    url.hostname = "localhost";
+    origins.push(url.origin);
+  }
+
+  return [...new Set(origins)];
 }
 
 function readInteger(

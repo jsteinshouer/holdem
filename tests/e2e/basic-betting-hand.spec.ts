@@ -55,14 +55,29 @@ test("mobile layout keeps current player actions usable", async ({ browser, page
   await joinExistingPage(mobilePage, inviteLink, "Grace");
   await mobilePage.getByRole("button", { name: "Chat" }).click();
   await expect(mobilePage.getByLabel("Table chat")).toBeVisible();
+  await mobilePage.getByRole("button", { name: "Players" }).click();
+  await expect(mobilePage.getByLabel("Player details")).toContainText("Grace");
+  await mobilePage.getByRole("button", { name: "Manage" }).click();
+  await expect(mobilePage.getByLabel("Invite and tutorials")).toBeVisible();
+  await mobilePage.getByRole("button", { name: "Log" }).click();
   await clickRoomButton(page, "Start hand");
+
+  await expect(mobilePage.getByLabel("Hand console status")).toContainText("Preflop");
+  await expect(mobilePage.getByLabel("Compact seated players")).toContainText("Grace");
+  await expect(mobilePage.getByLabel("Community cards")).toBeVisible();
+  await expect(mobilePage.getByLabel("Your hole cards")).toBeVisible();
 
   await expect(page.getByRole("button", { name: "Call" })).toBeVisible();
   await page.getByRole("button", { name: "Call" }).click();
 
   await expect(mobilePage.getByRole("button", { name: "Check" })).toBeVisible();
-  await expect(mobilePage.getByRole("spinbutton", { name: "Raise to" })).toBeVisible();
-  await expect(mobilePage.getByRole("button", { name: "Raise" })).toBeEnabled();
+  await mobilePage.getByRole("button", { name: "Raise" }).click();
+  await expect(mobilePage.getByRole("dialog", { name: "Raise" })).toContainText("Min raise");
+  await expect(mobilePage.getByRole("spinbutton", { name: "Exact raise to" })).toBeVisible();
+  await expect(mobilePage.getByRole("button", { name: "Confirm raise" })).toBeEnabled();
+  await mobilePage.getByRole("button", { name: "Cancel" }).click();
+  await mobilePage.getByRole("button", { name: "Check" }).click();
+  await expect(page.getByText("Grace checked.")).toBeVisible();
 
   await mobileContext.close();
 });
@@ -73,7 +88,7 @@ async function createTable(page: Page, displayName: string): Promise<string> {
   await page.getByRole("button", { name: "Create table" }).click();
   await expect(page.getByRole("heading", { name: /Table / })).toBeVisible();
 
-  return page.getByLabel("Invite link").inputValue();
+  return page.getByLabel("Invite link", { exact: true }).inputValue();
 }
 
 async function joinTable(browser: Browser, inviteLink: string, displayName: string): Promise<Page> {

@@ -50,7 +50,7 @@ const httpServer = createServer((request, response) => {
 
 const io = new Server(httpServer, {
   cors: {
-    origin: config.clientOrigin
+    origin: config.clientCorsOrigins
   }
 });
 
@@ -335,6 +335,7 @@ httpServer.listen(config.port, () => {
   logger.info("server started", {
     port: config.port,
     clientOrigin: config.clientOrigin,
+    clientCorsOrigins: config.clientCorsOrigins.join(","),
     staticClientDir,
     staticClientAvailable,
     defaultStartingStack: config.defaults.startingStack,

@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # Improve mobile hand-console UX
 
@@ -24,22 +24,22 @@ Use a quiet utilitarian game-console aesthetic with tactile poker details: stron
 
 ## Acceptance criteria
 
-- [ ] Mobile first screen shows a compact table status bar with phase, pot, to-call amount, current bet, and active player.
-- [ ] Board cards and viewer hole cards are prominent, readable, and remain visible without horizontal scrolling on common mobile widths.
-- [ ] Legal fold, check, call, and all-in actions appear in a sticky thumb-reachable action dock when available.
-- [ ] Raise opens a bottom sheet with current stack, pot, current bet, call amount, minimum raise, preset raise choices, exact raise control, confirm, and cancel.
-- [ ] Raise controls prevent invalid raise submissions client-side where legal-action data makes that possible, while preserving server validation as authoritative.
-- [ ] Seats render on mobile as a compact player strip showing display name, stack, current bet, connection/sit-out/busted state, and dealer/blind/current-actor indicators.
-- [ ] Full player details remain accessible from a Players drawer/tab without crowding the main hand console.
-- [ ] The active hand view shows the latest public action near the hand console.
-- [ ] The panel area defaults to action log during active hands and keeps chat available with an unread indicator.
-- [ ] Waiting and settled phases may give chat and table management more room without weakening the active-hand flow.
-- [ ] Host-only controls move into a Manage drawer, except `Start hand`, `Deal next hand`, and eligible `Auto-fold inactive`, which may surface contextually.
-- [ ] Invite link and tutorials remain accessible on mobile without occupying the active-hand primary surface.
-- [ ] Controls are keyboard-operable, visibly focused, labeled for assistive technology, and do not rely on hover-only interactions.
-- [ ] Text, buttons, cards, and panels do not overlap or resize unpredictably at mobile widths.
-- [ ] Playwright mobile viewport coverage verifies creating/joining a table, starting a hand, reading the hand console, opening the raise sheet, switching log/chat/players/manage panels, and performing representative legal actions.
-- [ ] Existing desktop table-room layout remains usable and is not materially redesigned by this issue.
+- [x] Mobile first screen shows a compact table status bar with phase, pot, to-call amount, current bet, and active player.
+- [x] Board cards and viewer hole cards are prominent, readable, and remain visible without horizontal scrolling on common mobile widths.
+- [x] Legal fold, check, call, and all-in actions appear in a sticky thumb-reachable action dock when available.
+- [x] Raise opens a bottom sheet with current stack, pot, current bet, call amount, minimum raise, preset raise choices, exact raise control, confirm, and cancel.
+- [x] Raise controls prevent invalid raise submissions client-side where legal-action data makes that possible, while preserving server validation as authoritative.
+- [x] Seats render on mobile as a compact player strip showing display name, stack, current bet, connection/sit-out/busted state, and dealer/blind/current-actor indicators.
+- [x] Full player details remain accessible from a Players drawer/tab without crowding the main hand console.
+- [x] The active hand view shows the latest public action near the hand console.
+- [x] The panel area defaults to action log during active hands and keeps chat available with an unread indicator.
+- [x] Waiting and settled phases may give chat and table management more room without weakening the active-hand flow.
+- [x] Host-only controls move into a Manage drawer, except `Start hand`, `Deal next hand`, and eligible `Auto-fold inactive`, which may surface contextually.
+- [x] Invite link and tutorials remain accessible on mobile without occupying the active-hand primary surface.
+- [x] Controls are keyboard-operable, visibly focused, labeled for assistive technology, and do not rely on hover-only interactions.
+- [x] Text, buttons, cards, and panels do not overlap or resize unpredictably at mobile widths.
+- [x] Playwright mobile viewport coverage verifies creating/joining a table, starting a hand, reading the hand console, opening the raise sheet, switching log/chat/players/manage panels, and performing representative legal actions.
+- [x] Existing desktop table-room layout remains usable and is not materially redesigned by this issue.
 
 ## Notes
 

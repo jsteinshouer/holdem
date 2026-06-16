@@ -6,6 +6,7 @@ describe("loadConfig", () => {
     expect(loadConfig({})).toEqual({
       port: 8787,
       clientOrigin: "http://localhost:5173",
+      clientCorsOrigins: ["http://localhost:5173", "http://127.0.0.1:5173"],
       defaults: {
         startingStack: 1000,
         blinds: {
@@ -32,5 +33,12 @@ describe("loadConfig", () => {
     expect(loadConfig({ CLIENT_ORIGIN: "https://example.test/play" }).clientOrigin).toBe(
       "https://example.test"
     );
+  });
+
+  it("allows both loopback hostnames for local browser websocket connections", () => {
+    expect(loadConfig({ CLIENT_ORIGIN: "http://127.0.0.1:5173" }).clientCorsOrigins).toEqual([
+      "http://127.0.0.1:5173",
+      "http://localhost:5173"
+    ]);
   });
 });
