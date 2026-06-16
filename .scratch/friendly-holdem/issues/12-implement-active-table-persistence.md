@@ -38,23 +38,23 @@ Persisted active table state is sensitive operational data because it includes s
 - Logging - should report persistence startup, restore, expiry, and quarantine outcomes without logging session tokens, serialized table state, or hidden cards.
 
 **Acceptance criteria:**
-- [ ] `ACTIVE_TABLE_PERSISTENCE=memory|sqlite`, `ACTIVE_TABLE_SQLITE_PATH`, and `ACTIVE_TABLE_INACTIVITY_TTL_MS` are validated at startup with safe error messages.
-- [ ] SQLite-backed persistence stores one versioned serialized active-table state per table plus table ID, last activity timestamp, schema version, and update timestamp.
-- [ ] The table-session runtime depends on a persistence port rather than SQLite-specific APIs.
-- [ ] Creating a table, joining/reconnecting, starting/dealing a hand, player actions, sit out/rejoin, host controls, rebuy approval, seating spectators, removing inactive players, and chat persist synchronously after success.
-- [ ] Rejected commands and passive page views do not update persisted table state or last activity.
-- [ ] A server restart restores active tables from SQLite before normal table traffic is accepted.
-- [ ] A browser with the same private table URL and session token can reconnect to the same restored participant after restart.
-- [ ] An in-progress hand restores with deck order, board, hole cards, bets, pot, current actor, action log, stacks, and settlement state intact.
-- [ ] Restored participants start disconnected until their browsers reconnect.
-- [ ] Restored disconnected-current-actor timers use the restored current actor timestamp, and normal auto-check or auto-fold behavior runs after startup restore finishes when the grace period has elapsed.
-- [ ] Persisted active tables expire after `ACTIVE_TABLE_INACTIVITY_TTL_MS` based on the last successful table-changing command.
-- [ ] Corrupt or unsupported persisted records are quarantined, logged with redacted context, and do not prevent the server from starting.
-- [ ] Opening an invite link for a quarantined table produces a safe user-facing failure rather than invalid table state.
-- [ ] Logs and snapshots do not expose session tokens or hidden hole cards beyond existing authorized player-specific snapshot rules.
-- [ ] SQLite database files are ignored by source control, and docs describe that production SQLite storage must live on persistent provider-managed storage.
-- [ ] Automated tests cover successful restart recovery mid-hand, synchronous persistence after commands, expiry behavior, reconnect after restore, corrupt-record quarantine, and sensitive-data logging boundaries.
-- [ ] Existing unit and end-to-end tests continue to pass.
+- [x] `ACTIVE_TABLE_PERSISTENCE=memory|sqlite`, `ACTIVE_TABLE_SQLITE_PATH`, and `ACTIVE_TABLE_INACTIVITY_TTL_MS` are validated at startup with safe error messages.
+- [x] SQLite-backed persistence stores one versioned serialized active-table state per table plus table ID, last activity timestamp, schema version, and update timestamp.
+- [x] The table-session runtime depends on a persistence port rather than SQLite-specific APIs.
+- [x] Creating a table, joining/reconnecting, starting/dealing a hand, player actions, sit out/rejoin, host controls, rebuy approval, seating spectators, removing inactive players, and chat persist synchronously after success.
+- [x] Rejected commands and passive page views do not update persisted table state or last activity.
+- [x] A server restart restores active tables from SQLite before normal table traffic is accepted.
+- [x] A browser with the same private table URL and session token can reconnect to the same restored participant after restart.
+- [x] An in-progress hand restores with deck order, board, hole cards, bets, pot, current actor, action log, stacks, and settlement state intact.
+- [x] Restored participants start disconnected until their browsers reconnect.
+- [x] Restored disconnected-current-actor timers use the restored current actor timestamp, and normal auto-check or auto-fold behavior runs after startup restore finishes when the grace period has elapsed.
+- [x] Persisted active tables expire after `ACTIVE_TABLE_INACTIVITY_TTL_MS` based on the last successful table-changing command.
+- [x] Corrupt or unsupported persisted records are quarantined, logged with redacted context, and do not prevent the server from starting.
+- [x] Opening an invite link for a quarantined table produces a safe user-facing failure rather than invalid table state.
+- [x] Logs and snapshots do not expose session tokens or hidden hole cards beyond existing authorized player-specific snapshot rules.
+- [x] SQLite database files are ignored by source control, and docs describe that production SQLite storage must live on persistent provider-managed storage.
+- [x] Automated tests cover successful restart recovery mid-hand, synchronous persistence after commands, expiry behavior, reconnect after restore, corrupt-record quarantine, and sensitive-data logging boundaries.
+- [x] Existing unit and end-to-end tests continue to pass.
 
 **Out of scope:**
 - Long-term hand history, hand replay, player stats, or casino-grade audit history.

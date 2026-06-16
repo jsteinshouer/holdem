@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Card } from "@friendly-holdem/shared";
+import { ACTIVE_TABLE_SCHEMA_VERSION, type ActiveTablePersistencePort, type ActiveTablePersistenceRecord } from "./activeTablePersistence.js";
 import { createDeck, createTableStore } from "./tableStore.js";
 
 const defaults = {
@@ -220,6 +221,139 @@ describe("table store", () => {
     const snapshotJson = JSON.stringify(host.snapshot);
 
     expect(snapshotJson).not.toContain(host.sessionToken);
+  });
+
+  it("persists successful table-changing commands synchronously and skips passive or rejected commands", () => {
+    let now = 0;
+    const persistence = createMemoryPersistence();
+    const store = createTableStore(defaults, undefined, () => now, persistence);
+    const host = store.createTable("Host");
+
+    expect(persistence.saves).toHaveLength(1);
+    expect(persistence.records.get(host.snapshot.tableId)?.lastActivityAt).toBe(0);
+
+    now = 10;
+    const player = store.joinTable(host.snapshot.tableId, "Grace");
+
+    expect(persistence.saves).toHaveLength(2);
+    expect(persistence.records.get(host.snapshot.tableId)?.lastActivityAt).toBe(10);
+
+    store.snapshotFor(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    expect(persistence.saves).toHaveLength(2);
+
+    expect(() => store.startHand(host.snapshot.tableId, player.snapshot.viewerParticipantId)).toThrow(
+      "Only the host can start a hand."
+    );
+    expect(persistence.saves).toHaveLength(2);
+
+    now = 20;
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(persistence.saves).toHaveLength(3);
+    expect(persistence.records.get(host.snapshot.tableId)?.lastActivityAt).toBe(20);
+  });
+
+  it("restores an in-progress hand with private cards, deck order, bets, current actor, and logs intact", () => {
+    let now = 0;
+    const persistence = createMemoryPersistence();
+    const store = createTableStore(defaults, undefined, () => now, persistence);
+    const host = store.createTable("Host");
+    const player = store.joinTable(host.snapshot.tableId, "Grace");
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    const table = store.getTable(host.snapshot.tableId);
+    const hand = table?.hand;
+
+    if (!hand) {
+      throw new Error("Expected an active hand.");
+    }
+
+    const hostHoleCards = [card("A", "spades"), card("A", "hearts")];
+    const playerHoleCards = [card("K", "spades"), card("K", "hearts")];
+    const deck = [
+      card("2", "clubs"),
+      card("3", "diamonds"),
+      card("4", "hearts"),
+      card("5", "spades"),
+      card("6", "clubs")
+    ];
+
+    hand.participants.get(host.snapshot.viewerParticipantId)!.holeCards = hostHoleCards;
+    hand.participants.get(player.snapshot.viewerParticipantId)!.holeCards = playerHoleCards;
+    hand.deck = deck;
+
+    now = 25;
+    store.playerAction(host.snapshot.tableId, host.snapshot.viewerParticipantId, "call");
+
+    const restored = createTableStore(defaults, undefined, () => now, createMemoryPersistence([...persistence.records.values()]));
+    const restoredTable = restored.getTable(host.snapshot.tableId);
+    const restoredHand = restoredTable?.hand;
+
+    expect(restoredHand?.deck).toEqual(deck);
+    expect(restoredHand?.participants.get(host.snapshot.viewerParticipantId)?.holeCards).toEqual(hostHoleCards);
+    expect(restoredHand?.participants.get(player.snapshot.viewerParticipantId)?.holeCards).toEqual(playerHoleCards);
+    expect(restoredHand?.pot).toBe(20);
+    expect(restoredHand?.currentActorSeat).toBe(1);
+    expect(restoredHand?.actionLog).toContain("Host called $5.");
+    expect(restored.snapshotFor(host.snapshot.tableId, host.snapshot.viewerParticipantId).hand.viewerHoleCards).toEqual(
+      hostHoleCards
+    );
+  });
+
+  it("restores participants disconnected and lets an existing session token reconnect to the same participant", () => {
+    const persistence = createMemoryPersistence();
+    const store = createTableStore(defaults, undefined, Date.now, persistence);
+    const host = store.createTable("Host");
+    const player = store.joinTable(host.snapshot.tableId, "Grace");
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    const restored = createTableStore(defaults, undefined, Date.now, createMemoryPersistence([...persistence.records.values()]));
+    const hostView = restored.snapshotFor(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(hostView.seats[0]?.player?.isConnected).toBe(false);
+    expect(hostView.seats[1]?.player?.isConnected).toBe(false);
+
+    const reconnect = restored.reconnectTable(host.snapshot.tableId, player.sessionToken);
+
+    expect(reconnect.snapshot.viewerParticipantId).toBe(player.snapshot.viewerParticipantId);
+    expect(reconnect.snapshot.seats[1]?.player?.isConnected).toBe(true);
+  });
+
+  it("can auto-act a restored disconnected current actor whose grace period has elapsed", () => {
+    let now = 0;
+    const persistence = createMemoryPersistence();
+    const store = createTableStore(defaults, undefined, () => now, persistence);
+    const host = store.createTable("Host");
+    store.joinTable(host.snapshot.tableId, "Grace");
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    now = defaults.disconnectedActionGraceMs;
+    const restored = createTableStore(defaults, undefined, () => now, createMemoryPersistence([...persistence.records.values()]));
+    const response = restored.autoActDisconnectedCurrentActor(host.snapshot.tableId);
+
+    expect(response?.snapshot.hand.phase).toBe("settled");
+    expect(response?.snapshot.seats[0]?.player?.hasFolded).toBe(true);
+  });
+
+  it("quarantines unsupported persisted active table records during restore", () => {
+    const persistence = createMemoryPersistence([
+      {
+        tableId: "table-1",
+        schemaVersion: 999,
+        lastActivityAt: 0,
+        updatedAt: 0,
+        state: {
+          schemaVersion: 999,
+          table: {}
+        } as never
+      }
+    ]);
+    const store = createTableStore(defaults, undefined, Date.now, persistence);
+
+    expect(store.getTable("table-1")).toBeUndefined();
+    expect(persistence.quarantinedTableIds).toEqual(["table-1"]);
   });
 
   it("stores bounded escaped table chat messages for players and spectators", () => {
@@ -814,4 +948,39 @@ function card(rank: Card["rank"], suit: Card["suit"]): Card {
 
 function boardDeck(): Card[] {
   return [card("8", "clubs"), card("7", "diamonds"), card("5", "hearts"), card("3", "clubs"), card("2", "diamonds")];
+}
+
+function createMemoryPersistence(records: ActiveTablePersistenceRecord[] = []): ActiveTablePersistencePort & {
+  records: Map<string, ActiveTablePersistenceRecord>;
+  quarantinedTableIds: string[];
+  saves: ActiveTablePersistenceRecord[];
+} {
+  const recordMap = new Map(records.map((record) => [record.tableId, record]));
+  const saves: ActiveTablePersistenceRecord[] = [];
+  const quarantinedTableIds: string[] = [];
+
+  return {
+    records: recordMap,
+    saves,
+    quarantinedTableIds,
+    loadActiveTables() {
+      return [...recordMap.values()];
+    },
+    saveTable(record) {
+      if (record.schemaVersion !== ACTIVE_TABLE_SCHEMA_VERSION) {
+        throw new Error("Unexpected test schema version.");
+      }
+
+      const savedRecord = structuredClone(record);
+      recordMap.set(record.tableId, savedRecord);
+      saves.push(savedRecord);
+    },
+    deleteExpiredTables() {
+      return [];
+    },
+    quarantineTable(tableId) {
+      quarantinedTableIds.push(tableId);
+      recordMap.delete(tableId);
+    }
+  };
 }

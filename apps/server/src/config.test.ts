@@ -16,6 +16,11 @@ describe("loadConfig", () => {
         disconnectedActionGraceMs: 30000,
         hostAutoFoldAfterMs: 120000,
         eventLogCap: 200
+      },
+      activeTablePersistence: {
+        mode: "memory",
+        sqlitePath: expect.stringContaining("friendly-holdem"),
+        inactivityTtlMs: 604800000
       }
     });
   });
@@ -40,5 +45,31 @@ describe("loadConfig", () => {
       "http://127.0.0.1:5173",
       "http://localhost:5173"
     ]);
+  });
+
+  it("loads sqlite active table persistence settings", () => {
+    expect(
+      loadConfig({
+        ACTIVE_TABLE_PERSISTENCE: "sqlite",
+        ACTIVE_TABLE_SQLITE_PATH: "C:\\data\\friendly-holdem.sqlite",
+        ACTIVE_TABLE_INACTIVITY_TTL_MS: "60000"
+      }).activeTablePersistence
+    ).toEqual({
+      mode: "sqlite",
+      sqlitePath: "C:\\data\\friendly-holdem.sqlite",
+      inactivityTtlMs: 60000
+    });
+  });
+
+  it("rejects invalid active table persistence settings", () => {
+    expect(() => loadConfig({ ACTIVE_TABLE_PERSISTENCE: "postgres" })).toThrow(
+      "ACTIVE_TABLE_PERSISTENCE must be either memory or sqlite."
+    );
+    expect(() => loadConfig({ ACTIVE_TABLE_SQLITE_PATH: " " })).toThrow(
+      "ACTIVE_TABLE_SQLITE_PATH must not be empty."
+    );
+    expect(() => loadConfig({ ACTIVE_TABLE_INACTIVITY_TTL_MS: "999" })).toThrow(
+      "ACTIVE_TABLE_INACTIVITY_TTL_MS must be at least 1000."
+    );
   });
 });

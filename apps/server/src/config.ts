@@ -1,10 +1,14 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { TableDefaults } from "@friendly-holdem/shared";
+import type { ActiveTablePersistenceConfig } from "./activeTablePersistence.js";
 
 export type ServerConfig = {
   port: number;
   clientOrigin: string;
   clientCorsOrigins: string[];
   defaults: TableDefaults;
+  activeTablePersistence: ActiveTablePersistenceConfig;
 };
 
 export type RawEnvironment = Partial<Record<string, string | undefined>>;
@@ -17,7 +21,10 @@ const DEFAULTS = {
   DEFAULT_BIG_BLIND: "10",
   DISCONNECTED_ACTION_GRACE_MS: "30000",
   HOST_AUTO_FOLD_AFTER_MS: "120000",
-  EVENT_LOG_CAP: "200"
+  EVENT_LOG_CAP: "200",
+  ACTIVE_TABLE_PERSISTENCE: "memory",
+  ACTIVE_TABLE_SQLITE_PATH: join(tmpdir(), "friendly-holdem", "active-tables.sqlite"),
+  ACTIVE_TABLE_INACTIVITY_TTL_MS: String(7 * 24 * 60 * 60 * 1000)
 } as const;
 
 export function loadConfig(env: RawEnvironment = process.env): ServerConfig {
@@ -48,6 +55,19 @@ export function loadConfig(env: RawEnvironment = process.env): ServerConfig {
     min: 1,
     max: 10000
   });
+  const persistenceMode = readActiveTablePersistenceMode(
+    env.ACTIVE_TABLE_PERSISTENCE ?? DEFAULTS.ACTIVE_TABLE_PERSISTENCE
+  );
+  const sqlitePath = readNonEmptyString(
+    env.ACTIVE_TABLE_SQLITE_PATH ?? DEFAULTS.ACTIVE_TABLE_SQLITE_PATH,
+    "ACTIVE_TABLE_SQLITE_PATH"
+  );
+  const inactivityTtlMs = readInteger(
+    env,
+    "ACTIVE_TABLE_INACTIVITY_TTL_MS",
+    DEFAULTS.ACTIVE_TABLE_INACTIVITY_TTL_MS,
+    { min: 1000 }
+  );
 
   return {
     port,
@@ -62,6 +82,11 @@ export function loadConfig(env: RawEnvironment = process.env): ServerConfig {
       disconnectedActionGraceMs,
       hostAutoFoldAfterMs,
       eventLogCap
+    },
+    activeTablePersistence: {
+      mode: persistenceMode,
+      sqlitePath,
+      inactivityTtlMs
     }
   };
 }
@@ -117,4 +142,20 @@ function readOrigin(value: string): string {
   } catch {
     throw new Error("CLIENT_ORIGIN must be a valid http or https origin.");
   }
+}
+
+function readActiveTablePersistenceMode(value: string): "memory" | "sqlite" {
+  if (value === "memory" || value === "sqlite") {
+    return value;
+  }
+
+  throw new Error("ACTIVE_TABLE_PERSISTENCE must be either memory or sqlite.");
+}
+
+function readNonEmptyString(value: string, key: string): string {
+  if (value.trim()) {
+    return value;
+  }
+
+  throw new Error(`${key} must not be empty.`);
 }

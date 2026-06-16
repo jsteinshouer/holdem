@@ -35,18 +35,20 @@ The server serves `apps/client/dist` when that build output exists. Browser rout
 - `DISCONNECTED_ACTION_GRACE_MS`: Grace period before an away current actor is auto-checked or auto-folded. Defaults to `30000`.
 - `HOST_AUTO_FOLD_AFTER_MS`: Delay before the host can auto-fold a connected inactive actor. Defaults to `120000`.
 - `EVENT_LOG_CAP`: Maximum recent public table events retained in memory. Defaults to `200`.
+- `ACTIVE_TABLE_PERSISTENCE`: Storage mode for active tables. Supported values are `memory` and `sqlite`. Defaults to `memory`.
+- `ACTIVE_TABLE_SQLITE_PATH`: Path to the SQLite database file when `ACTIVE_TABLE_PERSISTENCE=sqlite`. Defaults outside the repository.
+- `ACTIVE_TABLE_INACTIVITY_TTL_MS`: Inactivity window after which persisted active tables expire. Defaults to `604800000` (7 days).
 
 Do not put secrets in these values. The MVP uses private invite links and browser-held session tokens, but no database credentials or third-party API keys are required.
 
-## Post-MVP Active Table Persistence
+## Active Table Persistence
 
-Active table persistence should use explicit configuration once implemented:
+Active table persistence uses explicit configuration:
 
-- `ACTIVE_TABLE_PERSISTENCE`: Storage mode for active tables. Supported first values should be `memory` and `sqlite`.
-- `ACTIVE_TABLE_SQLITE_PATH`: Path to the SQLite database file when `ACTIVE_TABLE_PERSISTENCE=sqlite`. The default should be outside the repository, and production should point this at persistent provider-managed storage.
-- `ACTIVE_TABLE_INACTIVITY_TTL_MS`: Inactivity window after which persisted active tables expire. Activity means a successful table-changing command.
+- `memory` keeps the previous in-process behavior; active tables are lost on server restart.
+- `sqlite` stores the latest versioned active table state for each table before successful table-changing commands are acknowledged.
 
-Persisted active table state includes session tokens and hidden card state. Do not commit SQLite database files, log persisted table state, or store the database on ephemeral production disk if restart recovery is expected.
+Persisted active table state includes session tokens and hidden card state. Do not commit SQLite database files, log persisted table state, or store the database on ephemeral production disk if restart recovery is expected. Production SQLite storage must live on persistent provider-managed storage that survives deploys and process restarts.
 
 ## Static Hosting Alternative
 

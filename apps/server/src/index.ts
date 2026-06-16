@@ -19,13 +19,16 @@ import type {
   TableCommandResponse
 } from "@friendly-holdem/shared";
 import { Server } from "socket.io";
+import { createActiveTablePersistence } from "./activeTablePersistence.js";
 import { loadConfig } from "./config.js";
 import { createLogger } from "./logger.js";
 import { createTableStore } from "./tableStore.js";
 
 const config = loadConfig();
 const logger = createLogger("friendly-holdem-server");
-const tableStore = createTableStore(config.defaults, config.clientOrigin);
+const activeTablePersistence = createActiveTablePersistence(config.activeTablePersistence, logger);
+const expiredActiveTableIds = activeTablePersistence?.deleteExpiredTables(Date.now()) ?? [];
+const tableStore = createTableStore(config.defaults, config.clientOrigin, Date.now, activeTablePersistence);
 const socketsByParticipant = new Map<string, Set<string>>();
 const participantBySocket = new Map<string, { tableId: string; participantId: string }>();
 const disconnectedActionTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -332,6 +335,10 @@ io.on("connection", (socket) => {
 });
 
 httpServer.listen(config.port, () => {
+  for (const tableId of tableStore.getTableIds()) {
+    scheduleDisconnectedAutoAction(tableId);
+  }
+
   logger.info("server started", {
     port: config.port,
     clientOrigin: config.clientOrigin,
@@ -343,7 +350,11 @@ httpServer.listen(config.port, () => {
     defaultBigBlind: config.defaults.blinds.bigBlind,
     disconnectedActionGraceMs: config.defaults.disconnectedActionGraceMs,
     hostAutoFoldAfterMs: config.defaults.hostAutoFoldAfterMs,
-    eventLogCap: config.defaults.eventLogCap
+    eventLogCap: config.defaults.eventLogCap,
+    activeTablePersistence: config.activeTablePersistence.mode,
+    activeTableInactivityTtlMs: config.activeTablePersistence.inactivityTtlMs,
+    restoredActiveTableCount: tableStore.getTableIds().length,
+    expiredActiveTableCount: expiredActiveTableIds.length
   });
 });
 

@@ -11,6 +11,7 @@ import type {
   TableSessionResponse,
   ViewerRole
 } from "@friendly-holdem/shared";
+import { ACTIVE_TABLE_SCHEMA_VERSION, type ActiveTablePersistencePort } from "./activeTablePersistence.js";
 
 const MAX_SEATS = 6;
 const MAX_DISPLAY_NAME_LENGTH = 32;
@@ -76,10 +77,36 @@ export type PrivateTable = {
   defaults: TableDefaults;
 };
 
+export type SerializedActiveTableState = {
+  schemaVersion: typeof ACTIVE_TABLE_SCHEMA_VERSION;
+  table: {
+    id: string;
+    hostId: string;
+    participants: Participant[];
+    hasHandStarted: boolean;
+    hand: SerializedActiveHand | null;
+    chatMessages: ChatMessage[];
+    defaults: TableDefaults;
+  };
+};
+
+export type SerializedActiveHand = Omit<ActiveHand, "participants"> & {
+  participants: HandParticipantState[];
+};
+
 export type TableStore = ReturnType<typeof createTableStore>;
 
-export function createTableStore(defaults: TableDefaults, origin?: string, now: () => number = Date.now) {
+export function createTableStore(
+  defaults: TableDefaults,
+  origin?: string,
+  now: () => number = Date.now,
+  persistence?: ActiveTablePersistencePort | null
+) {
   const tables = new Map<string, PrivateTable>();
+
+  if (persistence) {
+    restorePersistedTables(tables, defaults, persistence, now);
+  }
 
   function createTable(displayName: string): TableSessionResponse {
     const tableId = createUniqueId(tables);
@@ -96,6 +123,7 @@ export function createTableStore(defaults: TableDefaults, origin?: string, now: 
     };
 
     tables.set(table.id, table);
+    persistTable(table, persistence, now);
 
     return {
       ok: true,
@@ -111,6 +139,8 @@ export function createTableStore(defaults: TableDefaults, origin?: string, now: 
       const reconnected = reconnectParticipant(table, sessionToken);
 
       if (reconnected) {
+        persistTable(table, persistence, now);
+
         return {
           ok: true,
           sessionToken: reconnected.sessionToken,
@@ -127,6 +157,7 @@ export function createTableStore(defaults: TableDefaults, origin?: string, now: 
 
     table.participants.set(participant.id, participant);
     table.participantIdsByToken.set(participant.sessionToken, participant.id);
+    persistTable(table, persistence, now);
 
     return {
       ok: true,
@@ -142,6 +173,8 @@ export function createTableStore(defaults: TableDefaults, origin?: string, now: 
     if (!participant) {
       throw new Error("Session was not found for this table.");
     }
+
+    persistTable(table, persistence, now);
 
     return {
       ok: true,
@@ -191,6 +224,7 @@ export function createTableStore(defaults: TableDefaults, origin?: string, now: 
 
     table.hand = createHand(table, activePlayers, null, now);
     table.hasHandStarted = true;
+    persistTable(table, persistence, now);
 
     return {
       ok: true,
@@ -217,6 +251,7 @@ export function createTableStore(defaults: TableDefaults, origin?: string, now: 
     }
 
     table.hand = createHand(table, activePlayers, table.hand, now);
+    persistTable(table, persistence, now);
 
     return {
       ok: true,
@@ -248,6 +283,7 @@ export function createTableStore(defaults: TableDefaults, origin?: string, now: 
     }
 
     applyPlayerAction(table, hand, participant, now, action, raiseTo);
+    persistTable(table, persistence, now);
 
     return {
       ok: true,
@@ -275,6 +311,7 @@ export function createTableStore(defaults: TableDefaults, origin?: string, now: 
     const action: LegalAction = callAmount === 0 ? "check" : "fold";
 
     applyPlayerAction(table, hand, actor, now, action);
+    persistTable(table, persistence, now);
 
     return {
       ok: true,
@@ -310,6 +347,7 @@ export function createTableStore(defaults: TableDefaults, origin?: string, now: 
     }
 
     applyPlayerAction(table, hand, actor, now, "fold");
+    persistTable(table, persistence, now);
 
     return {
       ok: true,
@@ -329,6 +367,7 @@ export function createTableStore(defaults: TableDefaults, origin?: string, now: 
     }
 
     participant.isSittingOut = true;
+    persistTable(table, persistence, now);
 
     return {
       ok: true,
@@ -352,6 +391,7 @@ export function createTableStore(defaults: TableDefaults, origin?: string, now: 
     }
 
     participant.isSittingOut = false;
+    persistTable(table, persistence, now);
 
     return {
       ok: true,
@@ -378,6 +418,7 @@ export function createTableStore(defaults: TableDefaults, origin?: string, now: 
 
     target.stack = table.defaults.startingStack;
     target.isSittingOut = false;
+    persistTable(table, persistence, now);
 
     return {
       ok: true,
@@ -407,6 +448,7 @@ export function createTableStore(defaults: TableDefaults, origin?: string, now: 
     spectator.seatNumber = seatNumber;
     spectator.stack = table.defaults.startingStack;
     spectator.isSittingOut = false;
+    persistTable(table, persistence, now);
 
     return {
       ok: true,
@@ -433,6 +475,7 @@ export function createTableStore(defaults: TableDefaults, origin?: string, now: 
 
     table.participants.delete(target.id);
     table.participantIdsByToken.delete(target.sessionToken);
+    persistTable(table, persistence, now);
 
     return {
       ok: true,
@@ -463,6 +506,7 @@ export function createTableStore(defaults: TableDefaults, origin?: string, now: 
     if (table.chatMessages.length > table.defaults.eventLogCap) {
       table.chatMessages.splice(0, table.chatMessages.length - table.defaults.eventLogCap);
     }
+    persistTable(table, persistence, now);
 
     return {
       ok: true,
@@ -473,6 +517,10 @@ export function createTableStore(defaults: TableDefaults, origin?: string, now: 
 
   function getTable(tableId: string): PrivateTable | undefined {
     return tables.get(tableId);
+  }
+
+  function getTableIds(): string[] {
+    return [...tables.keys()];
   }
 
   return {
@@ -492,8 +540,192 @@ export function createTableStore(defaults: TableDefaults, origin?: string, now: 
     seatSpectator,
     removePlayer,
     sendChatMessage,
-    getTable
+    getTable,
+    getTableIds
   };
+}
+
+function restorePersistedTables(
+  tables: Map<string, PrivateTable>,
+  defaults: TableDefaults,
+  persistence: ActiveTablePersistencePort,
+  now: () => number
+): void {
+  for (const record of persistence.loadActiveTables(now())) {
+    try {
+      const table = deserializeTable(record.state, defaults);
+
+      if (record.tableId !== table.id || record.schemaVersion !== ACTIVE_TABLE_SCHEMA_VERSION) {
+        throw new Error("unsupported active table persistence schema version");
+      }
+
+      tables.set(table.id, table);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "invalid persisted active table state";
+      persistence.quarantineTable(record.tableId, reason);
+    }
+  }
+}
+
+function persistTable(
+  table: PrivateTable,
+  persistence: ActiveTablePersistencePort | null | undefined,
+  now: () => number
+): void {
+  if (!persistence) {
+    return;
+  }
+
+  const nowMs = now();
+  persistence.saveTable({
+    tableId: table.id,
+    schemaVersion: ACTIVE_TABLE_SCHEMA_VERSION,
+    lastActivityAt: nowMs,
+    updatedAt: nowMs,
+    state: serializeTable(table)
+  });
+}
+
+function serializeTable(table: PrivateTable): SerializedActiveTableState {
+  return {
+    schemaVersion: ACTIVE_TABLE_SCHEMA_VERSION,
+    table: {
+      id: table.id,
+      hostId: table.hostId,
+      participants: [...table.participants.values()].map((participant) => ({ ...participant })),
+      hasHandStarted: table.hasHandStarted,
+      hand: table.hand
+        ? {
+            ...table.hand,
+            deck: [...table.hand.deck],
+            board: [...table.hand.board],
+            participants: [...table.hand.participants.values()].map((participant) => ({
+              ...participant,
+              holeCards: [...participant.holeCards]
+            })),
+            actionLog: [...table.hand.actionLog]
+          }
+        : null,
+      chatMessages: table.chatMessages.map((message) => ({ ...message })),
+      defaults: table.defaults
+    }
+  };
+}
+
+function deserializeTable(state: SerializedActiveTableState, defaults: TableDefaults): PrivateTable {
+  assertActiveTableState(state);
+
+  const participants = new Map(
+    state.table.participants.map((participant) => [
+      participant.id,
+      {
+        ...participant,
+        isConnected: false
+      }
+    ])
+  );
+
+  if (!participants.has(state.table.hostId)) {
+    throw new Error("persisted active table host was not found");
+  }
+
+  return {
+    id: state.table.id,
+    hostId: state.table.hostId,
+    participants,
+    participantIdsByToken: new Map(state.table.participants.map((participant) => [participant.sessionToken, participant.id])),
+    hasHandStarted: state.table.hasHandStarted,
+    hand: state.table.hand
+      ? {
+          ...state.table.hand,
+          deck: [...state.table.hand.deck],
+          board: [...state.table.hand.board],
+          participants: new Map(
+            state.table.hand.participants.map((participant) => [
+              participant.participantId,
+              {
+                ...participant,
+                holeCards: [...participant.holeCards]
+              }
+            ])
+          ),
+          actionLog: [...state.table.hand.actionLog]
+        }
+      : null,
+    chatMessages: state.table.chatMessages.map((message) => ({ ...message })),
+    defaults: state.table.defaults ?? defaults
+  };
+}
+
+function assertActiveTableState(value: SerializedActiveTableState): void {
+  if (!isRecord(value) || value.schemaVersion !== ACTIVE_TABLE_SCHEMA_VERSION || !isRecord(value.table)) {
+    throw new Error("unsupported active table persistence schema version");
+  }
+
+  const table = value.table;
+
+  if (
+    typeof table.id !== "string" ||
+    typeof table.hostId !== "string" ||
+    !Array.isArray(table.participants) ||
+    typeof table.hasHandStarted !== "boolean" ||
+    !Array.isArray(table.chatMessages)
+  ) {
+    throw new Error("invalid persisted active table state");
+  }
+
+  for (const participant of table.participants) {
+    assertParticipant(participant);
+  }
+
+  if (table.hand !== null) {
+    assertActiveHand(table.hand);
+  }
+}
+
+function assertParticipant(value: Participant): void {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.displayName !== "string" ||
+    typeof value.sessionToken !== "string" ||
+    (value.kind !== "player" && value.kind !== "spectator") ||
+    (typeof value.seatNumber !== "number" && value.seatNumber !== null) ||
+    typeof value.stack !== "number" ||
+    typeof value.isSittingOut !== "boolean" ||
+    typeof value.isConnected !== "boolean" ||
+    (typeof value.lastChatSentAt !== "number" && value.lastChatSentAt !== null)
+  ) {
+    throw new Error("invalid persisted participant state");
+  }
+}
+
+function assertActiveHand(value: SerializedActiveHand): void {
+  if (
+    !isRecord(value) ||
+    !["preflop", "flop", "turn", "river", "showdown", "settled"].includes(String(value.phase)) ||
+    typeof value.handNumber !== "number" ||
+    !Array.isArray(value.deck) ||
+    !Array.isArray(value.board) ||
+    typeof value.buttonSeat !== "number" ||
+    typeof value.smallBlindSeat !== "number" ||
+    typeof value.bigBlindSeat !== "number" ||
+    (typeof value.currentActorSeat !== "number" && value.currentActorSeat !== null) ||
+    (typeof value.currentActorSince !== "number" && value.currentActorSince !== null) ||
+    !Array.isArray(value.participants) ||
+    typeof value.pot !== "number" ||
+    typeof value.currentBet !== "number" ||
+    typeof value.minimumRaiseIncrement !== "number" ||
+    !Array.isArray(value.actionLog) ||
+    (typeof value.settlementSummary !== "string" && value.settlementSummary !== null) ||
+    typeof value.shouldRevealHoleCards !== "boolean"
+  ) {
+    throw new Error("invalid persisted hand state");
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function createParticipant(
