@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { io, type Socket } from "socket.io-client";
 import type {
+  AddBotPayload,
   ApproveRebuyPayload,
   Card,
   CreateTablePayload,
@@ -705,7 +706,8 @@ function CompactSeat({ seat }: { seat: TableSnapshot["seats"][number] }) {
             {player.isSmallBlind ? <span>SB</span> : null}
             {player.isBigBlind ? <span>BB</span> : null}
             {player.isCurrentActor ? <span>Acting</span> : null}
-            {!player.isConnected ? <span>Away</span> : null}
+            {player.isBot ? <span>Bot</span> : null}
+            {!player.isConnected && !player.isBot ? <span>Away</span> : null}
             {player.isSittingOut ? <span>Out</span> : null}
             {player.isBusted ? <span>Busted</span> : null}
           </div>
@@ -739,7 +741,8 @@ function SeatCard({ seat }: { seat: TableSnapshot["seats"][number] }) {
             {seat.player.isAllIn ? <span>All-in</span> : null}
             {seat.player.isSittingOut ? <span>Sitting out</span> : null}
             {seat.player.isBusted ? <span>Busted</span> : null}
-            {!seat.player.isConnected ? <span>Away</span> : null}
+            {seat.player.isBot ? <span>Bot</span> : null}
+            {!seat.player.isConnected && !seat.player.isBot ? <span>Away</span> : null}
             {seat.player.inactiveForMs !== null ? <span>Inactive {formatDuration(seat.player.inactiveForMs)}</span> : null}
             {seat.player.isHost ? <span>Host</span> : null}
           </div>
@@ -856,6 +859,18 @@ function RailControls({
       </div>
       {snapshot.isHost ? (
         <div className="host-controls" aria-label="Host table controls">
+          <div className="host-controls__row">
+            <span>Bot players</span>
+            <button
+              disabled={!snapshot.availableControls.canAddBot}
+              onClick={() =>
+                onTableCommand<AddBotPayload>("host:addBot", { tableId: snapshot.tableId }, "Unable to add bot.")
+              }
+              type="button"
+            >
+              Add bot
+            </button>
+          </div>
           {snapshot.spectators.length > 0 ? (
             <div>
               <h3>Seat spectators</h3>

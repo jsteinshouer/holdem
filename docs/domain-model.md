@@ -18,7 +18,11 @@ A position at the table that can be occupied by a player. Seats are auto-assigne
 
 ### Player
 
-A participant who can occupy a seat, receive hole cards, post blinds, and take poker actions. A player has a display name, stack, session token, connection status, and sit-out status.
+A participant who can occupy a seat, receive hole cards, post blinds, and take poker actions. A player has a display name, stack, session token, connection status, sit-out status, and an `isBot` flag indicating whether a server-controlled bot rather than a human occupies the seat.
+
+### Bot
+
+A server-controlled player seated by the host in an open seat between hands. A bot is a player in every other respect: it counts toward seating limits and the 2-player minimum, follows the same hole-card reveal rules, and is settled like a human. A bot is marked with the per-player `isBot` flag so clients can render a bot badge, takes legal poker actions through the bot-turn scheduler, is exempt from inactivity and disconnect timers, never posts chat, and returns from a bust only through the host rebuy-approval flow.
 
 ### Spectator
 
@@ -64,7 +68,7 @@ Conceptually, a table snapshot should include:
 
 - Table ID and host ID.
 - Viewer role and permissions.
-- Seats and seated player summaries.
+- Seats and seated player summaries, including the per-player `isBot` flag.
 - Spectator summaries or spectator count.
 - Current hand phase.
 - Public board cards.
@@ -76,7 +80,7 @@ Conceptually, a table snapshot should include:
 - Public action log.
 - Chat preview or recent messages.
 - Player connection, sit-out, and busted statuses.
-- Host controls available to the viewer when the viewer is host.
+- Host controls available to the viewer when the viewer is host, including `canAddBot`, which is true only for the host when a seat is open and no hand is in progress.
 
 ### Domain Event
 
@@ -189,6 +193,10 @@ Allows the host to move a spectator into an open auto-assigned seat between hand
 ### RemovePlayer
 
 Allows the host to remove an inactive player between hands.
+
+### AddBot
+
+Allows the host to seat a bot player in the next open seat between hands. Rejected when a hand is in progress, the table is full, or the requester is not the host. The seated bot is marked with `isBot`.
 
 ### HostAutoFoldInactivePlayer
 
