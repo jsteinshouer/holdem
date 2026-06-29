@@ -12,11 +12,13 @@ import type {
   ViewerRole
 } from "@friendly-holdem/shared";
 import { ACTIVE_TABLE_SCHEMA_VERSION, type ActiveTablePersistencePort } from "./activeTablePersistence.js";
+import { simpleBotStrategy, type BotDecision, type BotStrategy } from "./botStrategy.js";
 
 const MAX_SEATS = 6;
 const MAX_DISPLAY_NAME_LENGTH = 32;
 const MAX_CHAT_MESSAGE_LENGTH = 180;
 const CHAT_RATE_LIMIT_MS = 1500;
+const BOT_NAMES = ["Bluffy", "Chip", "Maverick", "Ace", "Rounder", "Sleeves"];
 
 type ParticipantKind = "player" | "spectator";
 
@@ -29,6 +31,8 @@ export type Participant = {
   stack: number;
   isSittingOut: boolean;
   isConnected: boolean;
+  isBot: boolean;
+  botStrategyId: string | null;
   lastChatSentAt: number | null;
 };
 
@@ -100,7 +104,9 @@ export function createTableStore(
   defaults: TableDefaults,
   origin?: string,
   now: () => number = Date.now,
-  persistence?: ActiveTablePersistencePort | null
+  persistence?: ActiveTablePersistencePort | null,
+  random: () => number = Math.random,
+  botStrategy: BotStrategy = simpleBotStrategy
 ) {
   const tables = new Map<string, PrivateTable>();
 
@@ -338,6 +344,10 @@ export function createTableStore(
       throw new Error("An all-in player cannot be auto-folded.");
     }
 
+    if (actor.isBot) {
+      throw new Error("Bots act on their own and cannot be auto-folded.");
+    }
+
     if (!actor.isConnected) {
       throw new Error("Disconnected players are handled by the grace timer.");
     }
@@ -484,6 +494,63 @@ export function createTableStore(
     };
   }
 
+  function addBot(tableId: string, hostParticipantId: string): TableSessionResponse {
+    const table = getExistingTable(tables, tableId);
+    const host = requireParticipant(table, hostParticipantId);
+    const seatNumber = nextOpenSeat(table);
+
+    requireHost(table, host);
+    requireBetweenHands(table);
+
+    if (seatNumber === null) {
+      throw new Error("No open seats are available.");
+    }
+
+    const bot = createBotParticipant(table, seatNumber, table.defaults.startingStack, botStrategy);
+
+    table.participants.set(bot.id, bot);
+    table.participantIdsByToken.set(bot.sessionToken, bot.id);
+    persistTable(table, persistence, now);
+
+    return {
+      ok: true,
+      sessionToken: host.sessionToken,
+      snapshot: createSnapshot(table, host.id, origin, now)
+    };
+  }
+
+  function botActionForCurrentActor(tableId: string): TableSessionResponse | null {
+    const table = getExistingTable(tables, tableId);
+    const hand = table.hand;
+    const actor = currentActor(table);
+
+    if (!hand || hand.phase === "settled" || !actor || !actor.isBot) {
+      return null;
+    }
+
+    // At least one connected human must be present for play to advance.
+    if (!hasConnectedHuman(table)) {
+      return null;
+    }
+
+    const handState = hand.participants.get(actor.id);
+
+    if (!handState || handState.hasFolded || handState.isAllIn) {
+      return null;
+    }
+
+    const decision = decideBotAction(table, hand, actor, botStrategy, random);
+
+    applyPlayerAction(table, hand, actor, now, decision.action, decision.raiseTo);
+    persistTable(table, persistence, now);
+
+    return {
+      ok: true,
+      sessionToken: actor.sessionToken,
+      snapshot: createSnapshot(table, actor.id, origin, now)
+    };
+  }
+
   function sendChatMessage(tableId: string, participantId: string, body: string): TableSessionResponse {
     const table = getExistingTable(tables, tableId);
     const participant = requireParticipant(table, participantId);
@@ -539,10 +606,82 @@ export function createTableStore(
     approveRebuy,
     seatSpectator,
     removePlayer,
+    addBot,
+    botActionForCurrentActor,
     sendChatMessage,
     getTable,
     getTableIds
   };
+}
+
+export function hasConnectedHuman(table: PrivateTable): boolean {
+  return [...table.participants.values()].some((participant) => !participant.isBot && participant.isConnected);
+}
+
+function decideBotAction(
+  table: PrivateTable,
+  hand: ActiveHand,
+  bot: Participant,
+  botStrategy: BotStrategy,
+  random: () => number
+): BotDecision {
+  const handState = hand.participants.get(bot.id);
+
+  if (!handState) {
+    throw new Error("Bot was not dealt into the hand.");
+  }
+
+  const callAmount = Math.max(0, hand.currentBet - handState.currentBet);
+  const legalActions = legalActionsFor(bot, callAmount, hand);
+  const contestingStates = activeHandStates(hand);
+  const playersYetToAct = contestingStates.filter(
+    (state) => state.participantId !== bot.id && !state.isAllIn && !state.hasActed
+  ).length;
+
+  const decision = botStrategy.decide({
+    holeCards: handState.holeCards,
+    board: hand.board,
+    legalActions,
+    callAmount,
+    pot: hand.pot,
+    currentBet: hand.currentBet,
+    viewerBet: handState.currentBet,
+    minimumRaiseTo: hand.currentBet + hand.minimumRaiseIncrement,
+    stack: bot.stack,
+    activePlayerCount: contestingStates.length,
+    playersYetToAct,
+    random
+  });
+
+  return sanitizeBotDecision(decision, legalActions);
+}
+
+// Falls back to a guaranteed-legal action so a bot can never stall the table
+// with an action the engine would reject.
+function sanitizeBotDecision(decision: BotDecision, legalActions: LegalAction[]): BotDecision {
+  if (decision.action === "raise") {
+    if (legalActions.includes("raise") && typeof decision.raiseTo === "number") {
+      return decision;
+    }
+
+    return safeFallbackDecision(legalActions);
+  }
+
+  if (legalActions.includes(decision.action)) {
+    return { action: decision.action };
+  }
+
+  return safeFallbackDecision(legalActions);
+}
+
+function safeFallbackDecision(legalActions: LegalAction[]): BotDecision {
+  for (const action of ["check", "call", "fold", "all-in"] as const) {
+    if (legalActions.includes(action)) {
+      return { action };
+    }
+  }
+
+  return { action: "fold" };
 }
 
 function restorePersistedTables(
@@ -620,7 +759,11 @@ function deserializeTable(state: SerializedActiveTableState, defaults: TableDefa
       participant.id,
       {
         ...participant,
-        isConnected: false
+        isBot: participant.isBot === true,
+        botStrategyId: participant.botStrategyId ?? null,
+        // Bots have no socket, so they stay connected across a restart while
+        // humans reconnect with their session tokens.
+        isConnected: participant.isBot === true
       }
     ])
   );
@@ -694,6 +837,8 @@ function assertParticipant(value: Participant): void {
     typeof value.stack !== "number" ||
     typeof value.isSittingOut !== "boolean" ||
     typeof value.isConnected !== "boolean" ||
+    (value.isBot !== undefined && typeof value.isBot !== "boolean") ||
+    (value.botStrategyId !== undefined && value.botStrategyId !== null && typeof value.botStrategyId !== "string") ||
     (typeof value.lastChatSentAt !== "number" && value.lastChatSentAt !== null)
   ) {
     throw new Error("invalid persisted participant state");
@@ -732,7 +877,8 @@ function createParticipant(
   displayName: string,
   kind: ParticipantKind,
   seatNumber: number | null,
-  stack: number
+  stack: number,
+  bot: { isBot: boolean; botStrategyId: string | null } = { isBot: false, botStrategyId: null }
 ): Participant {
   return {
     id: randomToken(16),
@@ -743,8 +889,34 @@ function createParticipant(
     stack,
     isSittingOut: false,
     isConnected: true,
+    isBot: bot.isBot,
+    botStrategyId: bot.botStrategyId,
     lastChatSentAt: null
   };
+}
+
+function createBotParticipant(table: PrivateTable, seatNumber: number, stack: number, strategy: BotStrategy): Participant {
+  return createParticipant(pickBotName(table), "player", seatNumber, stack, {
+    isBot: true,
+    botStrategyId: strategy.id
+  });
+}
+
+function pickBotName(table: PrivateTable): string {
+  const usedNames = new Set([...table.participants.values()].map((participant) => participant.displayName));
+  const availableName = BOT_NAMES.find((name) => !usedNames.has(name));
+
+  if (availableName) {
+    return availableName;
+  }
+
+  for (let suffix = 2; ; suffix += 1) {
+    const candidate = `${BOT_NAMES[0]} ${suffix}`;
+
+    if (!usedNames.has(candidate)) {
+      return candidate;
+    }
+  }
 }
 
 function createSnapshot(
@@ -809,7 +981,8 @@ function createSnapshot(
         viewer.isSittingOut &&
         viewer.stack > 0 &&
         isBetweenHands(table),
-      canHostAutoFoldInactive: canHostAutoFoldInactive(table, viewer, now)
+      canHostAutoFoldInactive: canHostAutoFoldInactive(table, viewer, now),
+      canAddBot: viewer.id === table.hostId && isBetweenHands(table) && nextOpenSeat(table) !== null
     },
     defaults: table.defaults
   };
@@ -953,7 +1126,8 @@ function summarizeParticipant(participant: Participant, hostId: string) {
     id: participant.id,
     displayName: participant.displayName,
     isHost: participant.id === hostId,
-    isConnected: participant.isConnected
+    isConnected: participant.isConnected,
+    isBot: participant.isBot
   };
 }
 
@@ -1350,6 +1524,7 @@ function canHostAutoFoldInactive(table: PrivateTable, viewer: Participant, now: 
   return Boolean(
     actor &&
       actor.isConnected &&
+      !actor.isBot &&
       handState &&
       !handState.isAllIn &&
       hasCurrentActorWaited(table.hand, table.defaults.hostAutoFoldAfterMs, now)

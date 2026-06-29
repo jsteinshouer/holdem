@@ -3,6 +3,7 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
+  AddBotPayload,
   ApproveRebuyPayload,
   CreateTablePayload,
   DealNextHandPayload,
@@ -23,6 +24,7 @@ import { createActiveTablePersistence } from "./activeTablePersistence.js";
 import { loadConfig } from "./config.js";
 import { createLogger } from "./logger.js";
 import { createTableStore } from "./tableStore.js";
+import { createBotActionScheduler } from "./botScheduler.js";
 
 const config = loadConfig();
 const logger = createLogger("friendly-holdem-server");
@@ -32,6 +34,18 @@ const tableStore = createTableStore(config.defaults, config.clientOrigin, Date.n
 const socketsByParticipant = new Map<string, Set<string>>();
 const participantBySocket = new Map<string, { tableId: string; participantId: string }>();
 const disconnectedActionTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const botActionScheduler = createBotActionScheduler({
+  store: tableStore,
+  onBotActed: (tableId, response) => {
+    logger.info("bot acted", {
+      tableId,
+      participantId: response.snapshot.viewerParticipantId,
+      phase: response.snapshot.hand.phase
+    });
+    broadcastSnapshots(tableId);
+    scheduleDisconnectedAutoAction(tableId);
+  }
+});
 const rejectedCommandTimestampsBySocket = new Map<string, number[]>();
 const INVALID_COMMAND_RATE_LIMIT_WINDOW_MS = 10_000;
 const INVALID_COMMAND_RATE_LIMIT_MAX = 4;
@@ -279,6 +293,26 @@ io.on("connection", (socket) => {
     });
   });
 
+  socket.on("host:addBot", (payload: AddBotPayload, reply?: (response: TableCommandResponse) => void) => {
+    runSocketTableCommand(reply, () => {
+      const participant = participantBySocket.get(socket.id);
+
+      if (!participant || participant.tableId !== payload.tableId) {
+        throw new Error("Join the table before adding a bot.");
+      }
+
+      const response = tableStore.addBot(payload.tableId, participant.participantId);
+      logger.info("bot added", {
+        tableId: payload.tableId,
+        hostId: participant.participantId,
+        seatedPlayerCount: response.snapshot.seatedPlayerCount
+      });
+      broadcastSnapshots(payload.tableId);
+      scheduleDisconnectedAutoAction(payload.tableId);
+      return response;
+    });
+  });
+
   socket.on(
     "host:autoFoldInactive",
     (payload: HostAutoFoldInactivePayload, reply?: (response: TableCommandResponse) => void) => {
@@ -445,6 +479,10 @@ function broadcastSnapshots(tableId: string): void {
 }
 
 function scheduleDisconnectedAutoAction(tableId: string): void {
+  // Bots and disconnected players share the same re-arm points, so the bot-turn
+  // scheduler rides along with every call that reconsiders the current actor.
+  botActionScheduler.schedule(tableId);
+
   const existingTimer = disconnectedActionTimers.get(tableId);
 
   if (existingTimer) {

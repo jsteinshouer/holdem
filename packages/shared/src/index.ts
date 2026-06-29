@@ -18,6 +18,7 @@ export type ParticipantSummary = {
   displayName: string;
   isHost: boolean;
   isConnected: boolean;
+  isBot: boolean;
 };
 
 export type ChatMessage = {
@@ -78,6 +79,7 @@ export type AvailableControls = {
   canSitOut: boolean;
   canRejoin: boolean;
   canHostAutoFoldInactive: boolean;
+  canAddBot: boolean;
 };
 
 export type HandPhase = "waiting" | "preflop" | "flop" | "turn" | "river" | "showdown" | "settled";
@@ -172,6 +174,10 @@ export type SeatSpectatorPayload = {
 export type RemovePlayerPayload = {
   tableId: string;
   participantId: string;
+};
+
+export type AddBotPayload = {
+  tableId: string;
 };
 
 export type HostAutoFoldInactivePayload = {

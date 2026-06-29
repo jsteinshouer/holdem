@@ -52,6 +52,10 @@ Host command to remove an inactive player between hands.
 
 Host command to auto-fold the current actor after at least 2 minutes of inactivity.
 
+### host:addBot
+
+Host command to seat a rule-based bot player in the next open seat between hands. Payload is `AddBotPayload` (`{ tableId }`); the seat is chosen server-side. The bot counts toward seating limits and the 2-player minimum, is marked with `isBot` in snapshots, and takes its turns through the bot-turn scheduler. Rejected when a hand is in progress, the table is full, or the requester is not the host.
+
 ### chat:send
 
 Sends a bounded table-scoped chat message.

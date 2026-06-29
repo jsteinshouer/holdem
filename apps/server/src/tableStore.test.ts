@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Card } from "@friendly-holdem/shared";
 import { ACTIVE_TABLE_SCHEMA_VERSION, type ActiveTablePersistencePort, type ActiveTablePersistenceRecord } from "./activeTablePersistence.js";
+import { createSeededRandom } from "./botStrategy.js";
+import {
+  BOT_ACTION_MAX_DELAY_MS,
+  BOT_ACTION_MIN_DELAY_MS,
+  createBotActionScheduler
+} from "./botScheduler.js";
 import { createDeck, createTableStore } from "./tableStore.js";
 
 const defaults = {
@@ -941,6 +947,263 @@ describe("table store", () => {
     expect(store.snapshotFor(host.snapshot.tableId, host.snapshot.viewerParticipantId)).toEqual(before);
   });
 });
+
+describe("table store bots", () => {
+  it("lets the host add a bot to an empty seat between hands", () => {
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+
+    const response = store.addBot(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    const botSeat = response.snapshot.seats[1]?.player;
+
+    expect(response.snapshot.seatedPlayerCount).toBe(2);
+    expect(botSeat?.isBot).toBe(true);
+    expect(botSeat?.displayName).toBeTruthy();
+    expect(response.snapshot.seats[0]?.player?.isBot).toBe(false);
+  });
+
+  it("exposes the add-bot control to the host only while seats are open between hands", () => {
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    const player = store.joinTable(host.snapshot.tableId, "Grace");
+
+    expect(host.snapshot.availableControls.canAddBot).toBe(true);
+    expect(player.snapshot.availableControls.canAddBot).toBe(false);
+  });
+
+  it("counts bots toward the minimum players needed to start a hand", () => {
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+
+    expect(() => store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId)).toThrow(
+      "At least two seated players are required to start a hand."
+    );
+
+    store.addBot(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    const started = store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(started.snapshot.hand.phase).toBe("preflop");
+  });
+
+  it("rejects adding a bot during an active hand and from non-hosts", () => {
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    const player = store.joinTable(host.snapshot.tableId, "Grace");
+
+    expect(() => store.addBot(host.snapshot.tableId, player.snapshot.viewerParticipantId)).toThrow(
+      "Only the host can use this control."
+    );
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(() => store.addBot(host.snapshot.tableId, host.snapshot.viewerParticipantId)).toThrow(
+      "This control is only available between hands."
+    );
+  });
+
+  it("acts for a bot on its turn and advances the hand with a legal action", () => {
+    const { store, tableId, hostId } = startHeadsUpWithBot();
+
+    store.playerAction(tableId, hostId, "call");
+    const beforeLogLength = store.getTable(tableId)?.hand?.actionLog.length ?? 0;
+
+    const response = store.botActionForCurrentActor(tableId);
+
+    expect(response).not.toBeNull();
+    expect((store.getTable(tableId)?.hand?.actionLog.length ?? 0)).toBeGreaterThan(beforeLogLength);
+  });
+
+  it("pauses bot actions when no human is connected and resumes after reconnect", () => {
+    const { store, tableId, hostId, hostSessionToken } = startHeadsUpWithBot();
+
+    store.playerAction(tableId, hostId, "call");
+    store.disconnectParticipant(tableId, hostId);
+
+    expect(store.botActionForCurrentActor(tableId)).toBeNull();
+
+    store.reconnectTable(tableId, hostSessionToken);
+
+    expect(store.botActionForCurrentActor(tableId)).not.toBeNull();
+  });
+
+  it("restores bots connected and resumes a bot's turn after a restart", () => {
+    let now = 0;
+    const persistence = createMemoryPersistence();
+    const { store, tableId, hostId, hostSessionToken } = startHeadsUpWithBot(persistence, () => now);
+
+    store.playerAction(tableId, hostId, "call");
+
+    const restored = createTableStore(
+      defaults,
+      undefined,
+      () => now,
+      createMemoryPersistence([...persistence.records.values()]),
+      createSeededRandom(1)
+    );
+    const restoredBot = [...(restored.getTable(tableId)?.participants.values() ?? [])].find(
+      (participant) => participant.isBot
+    );
+    const restoredHost = [...(restored.getTable(tableId)?.participants.values() ?? [])].find(
+      (participant) => !participant.isBot
+    );
+
+    expect(restoredBot?.isConnected).toBe(true);
+    expect(restoredHost?.isConnected).toBe(false);
+    // Paused until a human reconnects, then the bot's turn resumes.
+    expect(restored.botActionForCurrentActor(tableId)).toBeNull();
+
+    restored.reconnectTable(tableId, hostSessionToken);
+
+    expect(restored.botActionForCurrentActor(tableId)).not.toBeNull();
+  });
+
+  it("rebuys a busted bot through the host approval flow", () => {
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    store.addBot(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    const bot = [...(store.getTable(host.snapshot.tableId)?.participants.values() ?? [])].find(
+      (participant) => participant.isBot
+    );
+
+    if (!bot) {
+      throw new Error("Expected a seated bot.");
+    }
+
+    bot.stack = 0;
+    bot.isSittingOut = true;
+
+    const response = store.approveRebuy(host.snapshot.tableId, host.snapshot.viewerParticipantId, bot.id);
+    const rebuiltSeat = response.snapshot.seats[1]?.player;
+
+    expect(rebuiltSeat?.stack).toBe(defaults.startingStack);
+    expect(rebuiltSeat?.isSittingOut).toBe(false);
+  });
+
+  it("does not let the host auto-fold a bot", () => {
+    const { store, tableId, hostId } = startHeadsUpWithBot();
+
+    store.playerAction(tableId, hostId, "call");
+
+    expect(() => store.hostAutoFoldInactive(tableId, hostId)).toThrow(
+      "Bots act on their own and cannot be auto-folded."
+    );
+  });
+});
+
+describe("bot turn scheduler", () => {
+  it("schedules a bot's turn within the 0.5 to 2 second delay window", () => {
+    const { store, tableId, hostId } = startHeadsUpWithBot();
+
+    store.playerAction(tableId, hostId, "call");
+
+    let scheduledDelay = -1;
+    const scheduler = createBotActionScheduler({
+      store,
+      random: () => 0.5,
+      setTimer: (_handler, delayMs) => {
+        scheduledDelay = delayMs;
+        return 0 as unknown as ReturnType<typeof setTimeout>;
+      },
+      clearTimer: () => undefined
+    });
+
+    scheduler.schedule(tableId);
+
+    expect(scheduledDelay).toBeGreaterThanOrEqual(BOT_ACTION_MIN_DELAY_MS);
+    expect(scheduledDelay).toBeLessThanOrEqual(BOT_ACTION_MAX_DELAY_MS);
+  });
+
+  it("clears an existing timer before re-arming so a bot turn never double-fires", () => {
+    const { store, tableId, hostId } = startHeadsUpWithBot();
+
+    store.playerAction(tableId, hostId, "call");
+
+    const cleared: number[] = [];
+    let nextTimerId = 1;
+    const scheduler = createBotActionScheduler({
+      store,
+      random: () => 0,
+      setTimer: () => nextTimerId++ as unknown as ReturnType<typeof setTimeout>,
+      clearTimer: (timer) => cleared.push(timer as unknown as number)
+    });
+
+    scheduler.schedule(tableId);
+    scheduler.schedule(tableId);
+
+    expect(cleared).toEqual([1]);
+  });
+
+  it("re-arms a restored bot whose turn it is on startup", () => {
+    vi.useFakeTimers();
+
+    try {
+      let now = 0;
+      const persistence = createMemoryPersistence();
+      const { store, tableId, hostId } = startHeadsUpWithBot(persistence, () => now);
+
+      store.playerAction(tableId, hostId, "call");
+
+      const restored = createTableStore(
+        defaults,
+        undefined,
+        () => now,
+        createMemoryPersistence([...persistence.records.values()]),
+        createSeededRandom(1)
+      );
+      const restoredHostToken = [...(restored.getTable(tableId)?.participantIdsByToken.entries() ?? [])].find(
+        ([, participantId]) => participantId === hostId
+      )?.[0];
+
+      if (!restoredHostToken) {
+        throw new Error("Expected the restored host session token.");
+      }
+
+      // A human must be connected for the bot scheduler to advance play.
+      restored.reconnectTable(tableId, restoredHostToken);
+
+      const acted: string[] = [];
+      const scheduler = createBotActionScheduler({
+        store: restored,
+        random: () => 0,
+        onBotActed: (actedTableId) => acted.push(actedTableId)
+      });
+
+      scheduler.rearmRestoredTables();
+
+      expect(acted).toEqual([]);
+
+      vi.advanceTimersByTime(BOT_ACTION_MAX_DELAY_MS);
+
+      expect(acted).toEqual([tableId]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+function startHeadsUpWithBot(
+  persistence?: ActiveTablePersistencePort,
+  now: () => number = () => 0
+): {
+  store: ReturnType<typeof createTableStore>;
+  tableId: string;
+  hostId: string;
+  hostSessionToken: string;
+} {
+  const store = createTableStore(defaults, undefined, now, persistence ?? null, createSeededRandom(1));
+  const host = store.createTable("Host");
+
+  store.addBot(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+  store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+  return {
+    store,
+    tableId: host.snapshot.tableId,
+    hostId: host.snapshot.viewerParticipantId,
+    hostSessionToken: host.sessionToken
+  };
+}
 
 function card(rank: Card["rank"], suit: Card["suit"]): Card {
   return { rank, suit };
