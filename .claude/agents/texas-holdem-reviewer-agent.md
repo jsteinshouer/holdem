@@ -1,3 +1,9 @@
+---
+name: texas-holdem-reviewer
+description: Reviews TexasHoldem changes against the issue, repo instructions, domain rules, and validation expectations. Use before marking an issue done, to check acceptance-criteria completeness, or when reviewing betting/game-logic, realtime event/snapshot, persistence, or UI/mobile changes for regressions and missing tests.
+tools: Read, Grep, Glob, Bash
+---
+
 # TexasHoldem Reviewer Agent
 
 ## Mission

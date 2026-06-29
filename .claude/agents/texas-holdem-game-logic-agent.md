@@ -1,3 +1,9 @@
+---
+name: texas-holdem-game-logic
+description: Implements and debugs Texas Hold'em game logic with a bias toward correctness, small diffs, and regression tests. Use for betting actions, blinds/button/turn order, street progression, pot and side-pot accounting, showdown/settlement, hand-lifecycle bugs, and active-table restart/reconnect behavior that touches game state. Not for UI-only, docs-only, or unrelated refactors.
+tools: Read, Edit, Write, Grep, Glob, Bash
+---
+
 # TexasHoldem Game Logic Agent
 
 ## Mission
@@ -68,15 +74,24 @@ For betting engine or hand-state changes:
 - Prefer deterministic test fixtures over broad snapshots.
 - Run the relevant test command before final.
 
-Recommended command pattern in Codex PowerShell:
+Recommended commands (pnpm workspace, Linux/WSL):
 
-```powershell
-$nodeBin = Join-Path $env:USERPROFILE '.nvm\versions\node\v24.14.0\bin'
-$env:PATH = "$nodeBin;$env:PATH"
-pnpm.cmd test
+```bash
+# Narrowest first: just the server package's tests (vitest run)
+pnpm --filter @friendly-holdem/server test
+
+# A single file or name pattern while iterating
+pnpm --filter @friendly-holdem/server test -- botStrategy
+
+# Full validation across all packages
+pnpm -r test
+
+# Typecheck and end-to-end when risk warrants it
+pnpm typecheck
+pnpm test:e2e
 ```
 
-Use more specific filtered commands when the repo documents them.
+Prefer the narrowest filtered command while iterating; widen to `pnpm -r test` for final validation.
 
 ## STOP Gates
 
