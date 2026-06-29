@@ -87,6 +87,15 @@ MVP completion means the app is deployed to a single always-on Node web service 
 67. As a developer, I want a bounded in-memory event log per table, so that the action log and debugging history cannot grow forever.
 68. As a developer, I want no database required for MVP, so that hosting and implementation stay simple.
 69. As a developer, I want a single always-on Node web service deployment path, so that Socket.IO and in-memory state have a clear runtime home.
+70. As a host, I want to add simple computer-controlled bot players to empty seats between hands, so that we can play even when only a few friends are online.
+71. As a host, I want bots to count toward the minimum players needed to start a hand, so that I can start a game without waiting for more humans.
+72. As a player, I want bots to make believable fold, check, call, raise, and all-in decisions based on their cards, position, and pot odds, so that the game feels like real poker.
+73. As a player, I want bots to act after a short, natural delay, so that I can follow the action at the table.
+74. As a player, I want bots to be clearly labeled as bots, so that I always know which seats are computer-controlled.
+75. As a host, I want busted bots to sit out like human players, so that bot rebuys go through the existing host approval flow rather than changing bankrolls automatically.
+76. As a host, I want bots to survive a server restart and resume play, so that an in-progress hand with bots does not deadlock or lose their chips.
+77. As a player, I want bots to pause when no human is connected to the table, so that an abandoned table does not keep playing by itself.
+78. As a developer, I want bot decision logic behind a strategy interface with tunable constants, so that a different strategy such as a local model can be added later without changing seating, timing, or persistence.
 
 ## Implementation Decisions
 
@@ -133,6 +142,19 @@ MVP completion means the app is deployed to a single always-on Node web service 
 - Do not depend on serverless-only hosting.
 - Include lightweight structured server logs for table creation, joins, reconnects, disconnects, hand start/settlement, rejected commands, unexpected errors, and startup config summary excluding secrets.
 - Enforce privacy and security boundaries: validate socket commands server-side, never send hidden cards to unauthorized viewers, cap resource counts and message lengths, use secure randomness, do not log private hole cards or session tokens, and restrict production CORS to configured origins.
+- Support simple computer-controlled bot players as seated participants that the host adds to specific empty seats between hands through a host control.
+- Implement bot decisions as a pure rule-based `BotStrategy` behind a narrow interface that consumes the bot's own player-specific snapshot and legal actions, so a future strategy such as a local model can be substituted without changing seating, timing, or persistence.
+- Ship a single "simple" bot skill level for now, with tunable constants stored in easy-to-change config or constants.
+- Base bot decisions on estimated hand strength (preflop starting-hand strength, postflop made-hand and draw strength via the Hand Evaluator Adapter), pot odds, and position, with bounded seedable randomization so play is varied but tests remain reproducible.
+- Size bot raises as a fraction of the pot, approximately one-half to three-quarters pot, clamped to the legal minimum raise and the bot's remaining stack.
+- Drive bot turns from a server-side bot-turn scheduler that acts after a short randomized delay, approximately 0.5 to 2 seconds, when the current actor is a bot.
+- Exempt bots from inactivity auto-fold and disconnected-action grace timers; bots are never treated as inactive or disconnected.
+- Treat a busted bot like a busted human: it sits out by default and returns only through host rebuy approval.
+- Count bots toward the 2-to-6 seated-player limits and toward the 2-player minimum required to start a hand.
+- Mark bot participants with an `isBot` flag in snapshots and assign each a display name from a small curated pool; bots take poker actions only and never post chat.
+- Require at least one connected human to advance play: when no human is connected, pause bot turns and do not start new hands, resuming when a human reconnects.
+- Persist bot participants as part of the versioned serialized active-table state, including the `isBot` marker and strategy identity, and on restore re-arm the bot-turn scheduler when a bot is the current actor so restored hands do not deadlock.
+- Restrict bot management to host controls, consistent with existing host-power limits so the host cannot alter cards, pots, or hand results.
 
 ## Testing Decisions
 
@@ -148,20 +170,22 @@ MVP completion means the app is deployed to a single always-on Node web service 
 - Playwright should target latest Chrome, Edge, Firefox, Safari, mobile Safari, and mobile Chrome where practical in the chosen CI/development setup.
 - Accessibility checks should cover keyboard-operable action controls, visible focus states, sufficient contrast, labeled controls, and no reliance on hover-only controls.
 - PWA tests or checks should verify manifest presence and app-shell/static asset service worker behavior.
+- Bot strategy tests should verify legal-action selection, pot-odds-based calling, position-aware aggression, pot-fraction raise sizing clamped to legal bounds, and reproducible behavior under a fixed RNG seed.
+- Bot integration tests should verify that adding a bot between hands seats it, that bots act after the configured delay, that bots are exempt from inactivity and disconnect timers, that play pauses when no human is connected, that busted bots sit out for host rebuy approval, and that a restart mid-hand with a bot as current actor resumes without deadlock.
 
 ## Out of Scope
 
 - Real-money wagering, deposits, withdrawals, prizes, or cash-out.
 - Accounts, login, passwords, email verification, and global profiles.
 - Public lobby, matchmaking, and table browser.
-- Database persistence for active games.
 - Tournaments and multi-table play.
 - Player stats, profile history, and long-term hand history.
 - Optional table passwords.
 - Manual seat picking and seat swapping.
 - Interactive simulated-hand tutorial mode.
 - Advanced moderation tools.
-- AI or bot players.
+- Language-model bot strategies, local or external (the `BotStrategy` interface is added now; a model-backed strategy is a later enhancement).
+- Multiple bot difficulty levels, configurable bot personalities, or bot chat and table talk.
 - Multiple simultaneous active tables per player.
 - Mobile-native app packaging.
 - Offline gameplay, offline table recovery, background sync, and push notifications.
