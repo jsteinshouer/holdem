@@ -12,6 +12,14 @@ The repo uses the default five-label triage vocabulary. See `docs/agents/triage-
 
 This is a single-context repo with root domain docs and root ADRs. See `docs/agents/domain.md`.
 
+## Agent Routing
+
+For betting rules, hand lifecycle, pot/side-pot logic, legal actions, turn order, showdown, or active table state, follow `docs/agents/texas-holdem/game-logic-agent.md`.
+
+Before marking an issue complete, or when asked to review TexasHoldem work, follow `docs/agents/texas-holdem/reviewer-agent.md`.
+
+For game-logic changes, tests are required unless the agent clearly explains why no test can be added.
+
 ## Mission
 You are an engineering assistant working in this repository. Optimize for correctness, minimal diffs, testable changes, and adherence to repo standards.
 
