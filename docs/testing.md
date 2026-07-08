@@ -53,11 +53,18 @@ tests/e2e/
 
 ```bash
 pnpm test            # unit tests: vitest run across all workspace packages
+pnpm test:coverage   # unit tests with a per-package V8 coverage report (text)
 pnpm test:e2e        # Playwright E2E across all 5 browser projects (auto-starts dev servers)
 pnpm test:e2e:prod   # build client/server/shared, start compiled server, run production smoke
 pnpm typecheck       # tsc -b
 pnpm lint            # lint all packages
 ```
+
+`test:coverage` uses the `@vitest/coverage-v8` provider and runs each package in its own
+directory (via `pnpm -r exec`), printing one coverage table per package. It reports over
+`src/**`, so intentionally uncovered entry points show up honestly: the server's `index.ts`
+(Socket.IO wiring) and the client's `main.tsx` (React UI) read as `0%` because they are
+exercised by the Playwright E2E suite rather than unit tests, not by coverage instrumentation.
 
 Scope unit tests narrowly while iterating:
 
