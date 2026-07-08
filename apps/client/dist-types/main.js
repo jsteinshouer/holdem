@@ -3,6 +3,7 @@ import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { io } from "socket.io-client";
 import { registerServiceWorker } from "./pwa";
+import { connectionStatusLabel, isCommandInputDisabled, isRaiseAmountInRange, raiseBounds, raisePresets } from "./tableView";
 import "./styles.css";
 const serverUrl = import.meta.env.VITE_SERVER_URL ?? window.location.origin;
 function App() {
@@ -150,7 +151,7 @@ function App() {
         setDisplayName("");
         return response.snapshot;
     }
-    return (_jsx("main", { className: "app-shell", children: _jsxs("section", { className: "room-board", "aria-labelledby": "app-heading", children: [_jsxs("header", { className: "room-board__masthead", children: [_jsxs("div", { children: [_jsx("p", { className: "eyebrow", children: "Private Hold'em Room" }), _jsx("h1", { id: "app-heading", children: "Friendly Hold'em" })] }), _jsx("span", { className: `status-pill status-pill--${connectionState}`, children: connectionState === "connected" ? "Online" : connectionState })] }), snapshot ? (_jsx(TableRoom, { error: error, inviteLink: inviteLink, snapshot: snapshot, onPlayerAction: playerAction, onSendChatMessage: sendChatMessage, onTableCommand: tableCommand, onStartHand: startHand })) : tableIdFromUrl ? (_jsx(JoinTablePanel, { displayName: displayName, error: error, isDisabled: !socket || connectionState !== "connected", tableId: tableIdFromUrl, onDisplayNameChange: setDisplayName, onJoin: joinTable })) : (_jsx(CreateTablePanel, { displayName: displayName, error: error, isDisabled: !socket || connectionState !== "connected", onDisplayNameChange: setDisplayName, onCreate: createTable }))] }) }));
+    return (_jsx("main", { className: "app-shell", children: _jsxs("section", { className: "room-board", "aria-labelledby": "app-heading", children: [_jsxs("header", { className: "room-board__masthead", children: [_jsxs("div", { children: [_jsx("p", { className: "eyebrow", children: "Private Hold'em Room" }), _jsx("h1", { id: "app-heading", children: "Friendly Hold'em" })] }), _jsx("span", { className: `status-pill status-pill--${connectionState}`, children: connectionStatusLabel(connectionState) })] }), snapshot ? (_jsx(TableRoom, { error: error, inviteLink: inviteLink, snapshot: snapshot, onPlayerAction: playerAction, onSendChatMessage: sendChatMessage, onTableCommand: tableCommand, onStartHand: startHand })) : tableIdFromUrl ? (_jsx(JoinTablePanel, { displayName: displayName, error: error, isDisabled: isCommandInputDisabled(Boolean(socket), connectionState), tableId: tableIdFromUrl, onDisplayNameChange: setDisplayName, onJoin: joinTable })) : (_jsx(CreateTablePanel, { displayName: displayName, error: error, isDisabled: isCommandInputDisabled(Boolean(socket), connectionState), onDisplayNameChange: setDisplayName, onCreate: createTable }))] }) }));
 }
 function CreateTablePanel(props) {
     return (_jsxs("form", { className: "entry-panel", onSubmit: (event) => {
@@ -183,14 +184,14 @@ function TableRoom({ error, snapshot, inviteLink, onPlayerAction, onSendChatMess
     const viewerPlayer = snapshot.seats
         .map((seat) => seat.player)
         .find((player) => player?.id === snapshot.viewerParticipantId);
-    const minimumRaiseTo = snapshot.hand.currentBet + snapshot.defaults.blinds.bigBlind;
-    const maximumRaiseTo = viewerPlayer ? viewerPlayer.currentBet + viewerPlayer.stack : minimumRaiseTo;
+    const { minimumRaiseTo, maximumRaiseTo } = raiseBounds({
+        currentBet: snapshot.hand.currentBet,
+        bigBlind: snapshot.defaults.blinds.bigBlind,
+        viewer: viewerPlayer
+    });
     const canRaise = snapshot.hand.legalActions.includes("raise");
     const parsedRaiseTo = Number(raiseTo);
-    const isRaiseToValid = canRaise &&
-        Number.isInteger(parsedRaiseTo) &&
-        parsedRaiseTo >= minimumRaiseTo &&
-        parsedRaiseTo <= maximumRaiseTo;
+    const isRaiseToValid = canRaise && isRaiseAmountInRange(parsedRaiseTo, minimumRaiseTo, maximumRaiseTo);
     const currentActorInactiveForMs = snapshot.hand.currentActorSince === null ? 0 : Math.max(0, nowMs - snapshot.hand.currentActorSince);
     const canHostAutoFoldInactive = snapshot.isHost &&
         Boolean(currentActor) &&
@@ -240,7 +241,7 @@ function TableRoom({ error, snapshot, inviteLink, onPlayerAction, onSendChatMess
         setActiveMobilePanel("chat");
     }
     function submitRaise(nextRaiseTo = parsedRaiseTo) {
-        if (!Number.isInteger(nextRaiseTo) || nextRaiseTo < minimumRaiseTo || nextRaiseTo > maximumRaiseTo) {
+        if (!isRaiseAmountInRange(nextRaiseTo, minimumRaiseTo, maximumRaiseTo)) {
             return;
         }
         onPlayerAction("raise", nextRaiseTo);
@@ -299,11 +300,7 @@ function ActionBar({ canRaise, callAmount, legalActions, maximumRaiseTo, minimum
     return (_jsx("div", { className: "action-bar", "aria-label": "Player actions", children: legalActions.length > 0 ? (_jsxs(_Fragment, { children: [_jsxs("div", { className: "action-bar__buttons", children: [actionOrder.map((action) => (_jsx("button", { disabled: !legalActions.includes(action), onClick: () => onAction(action), type: "button", children: formatAction(action) }, action))), _jsx("button", { className: "mobile-raise-trigger", disabled: !canRaise, onClick: onOpenRaiseSheet, type: "button", children: "Raise" })] }), _jsxs("div", { className: "raise-control", children: [_jsx("label", { htmlFor: "raise-to", children: "Raise to" }), _jsx("input", { disabled: !canRaise, id: "raise-to", max: maximumRaiseTo, min: minimumRaiseTo, step: 1, type: "number", value: raiseTo, onChange: (event) => onRaiseToChange(event.target.value) }), _jsx("button", { disabled: !isRaiseToValid, onClick: () => onAction("raise", Number(raiseTo)), title: `Call $${callAmount}, raise min $${minimumRaiseTo}`, type: "button", children: "Raise" })] })] })) : (_jsx("span", { children: "No action available" })) }));
 }
 function RaiseSheet({ callAmount, currentBet, isRaiseToValid, maximumRaiseTo, minimumRaiseTo, pot, raiseTo, stack, onCancel, onRaiseToChange, onSubmit }) {
-    const presetRaises = [
-        { label: "Min", value: minimumRaiseTo },
-        { label: "Pot", value: Math.min(maximumRaiseTo, Math.max(minimumRaiseTo, currentBet + pot + callAmount)) },
-        { label: "All-in", value: maximumRaiseTo }
-    ];
+    const presetRaises = raisePresets({ minimumRaiseTo, maximumRaiseTo, currentBet, pot, callAmount });
     return (_jsx("div", { className: "raise-sheet", role: "dialog", "aria-modal": "true", "aria-labelledby": "raise-sheet-title", children: _jsxs("form", { className: "raise-sheet__panel", onSubmit: (event) => {
                 event.preventDefault();
                 onSubmit();

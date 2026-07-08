@@ -21,11 +21,18 @@ import type {
   TableSnapshot
 } from "@friendly-holdem/shared";
 import { registerServiceWorker } from "./pwa";
+import {
+  connectionStatusLabel,
+  isCommandInputDisabled,
+  isRaiseAmountInRange,
+  raiseBounds,
+  raisePresets,
+  type ConnectionState
+} from "./tableView";
 import "./styles.css";
 
 const serverUrl = import.meta.env.VITE_SERVER_URL ?? window.location.origin;
 
-type ConnectionState = "connecting" | "connected" | "offline";
 
 function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -207,7 +214,7 @@ function App() {
             <h1 id="app-heading">Friendly Hold'em</h1>
           </div>
           <span className={`status-pill status-pill--${connectionState}`}>
-            {connectionState === "connected" ? "Online" : connectionState}
+            {connectionStatusLabel(connectionState)}
           </span>
         </header>
 
@@ -225,7 +232,7 @@ function App() {
           <JoinTablePanel
             displayName={displayName}
             error={error}
-            isDisabled={!socket || connectionState !== "connected"}
+            isDisabled={isCommandInputDisabled(Boolean(socket), connectionState)}
             tableId={tableIdFromUrl}
             onDisplayNameChange={setDisplayName}
             onJoin={joinTable}
@@ -234,7 +241,7 @@ function App() {
           <CreateTablePanel
             displayName={displayName}
             error={error}
-            isDisabled={!socket || connectionState !== "connected"}
+            isDisabled={isCommandInputDisabled(Boolean(socket), connectionState)}
             onDisplayNameChange={setDisplayName}
             onCreate={createTable}
           />
@@ -347,15 +354,14 @@ function TableRoom({
   const viewerPlayer = snapshot.seats
     .map((seat) => seat.player)
     .find((player) => player?.id === snapshot.viewerParticipantId);
-  const minimumRaiseTo = snapshot.hand.currentBet + snapshot.defaults.blinds.bigBlind;
-  const maximumRaiseTo = viewerPlayer ? viewerPlayer.currentBet + viewerPlayer.stack : minimumRaiseTo;
+  const { minimumRaiseTo, maximumRaiseTo } = raiseBounds({
+    currentBet: snapshot.hand.currentBet,
+    bigBlind: snapshot.defaults.blinds.bigBlind,
+    viewer: viewerPlayer
+  });
   const canRaise = snapshot.hand.legalActions.includes("raise");
   const parsedRaiseTo = Number(raiseTo);
-  const isRaiseToValid =
-    canRaise &&
-    Number.isInteger(parsedRaiseTo) &&
-    parsedRaiseTo >= minimumRaiseTo &&
-    parsedRaiseTo <= maximumRaiseTo;
+  const isRaiseToValid = canRaise && isRaiseAmountInRange(parsedRaiseTo, minimumRaiseTo, maximumRaiseTo);
   const currentActorInactiveForMs =
     snapshot.hand.currentActorSince === null ? 0 : Math.max(0, nowMs - snapshot.hand.currentActorSince);
   const canHostAutoFoldInactive =
@@ -423,7 +429,7 @@ function TableRoom({
   }
 
   function submitRaise(nextRaiseTo = parsedRaiseTo) {
-    if (!Number.isInteger(nextRaiseTo) || nextRaiseTo < minimumRaiseTo || nextRaiseTo > maximumRaiseTo) {
+    if (!isRaiseAmountInRange(nextRaiseTo, minimumRaiseTo, maximumRaiseTo)) {
       return;
     }
 
@@ -1140,11 +1146,7 @@ function RaiseSheet({
   onRaiseToChange: (raiseTo: string) => void;
   onSubmit: () => void;
 }) {
-  const presetRaises = [
-    { label: "Min", value: minimumRaiseTo },
-    { label: "Pot", value: Math.min(maximumRaiseTo, Math.max(minimumRaiseTo, currentBet + pot + callAmount)) },
-    { label: "All-in", value: maximumRaiseTo }
-  ];
+  const presetRaises = raisePresets({ minimumRaiseTo, maximumRaiseTo, currentBet, pot, callAmount });
 
   return (
     <div className="raise-sheet" role="dialog" aria-modal="true" aria-labelledby="raise-sheet-title">
