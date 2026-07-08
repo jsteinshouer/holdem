@@ -136,3 +136,65 @@ describe("simple bot strategy", () => {
     expect(decisionFor(7)).toEqual(decisionFor(7));
   });
 });
+
+describe("made-hand strength estimation", () => {
+  // Each seven-card holding is built to land on exactly one made-hand category.
+  // Categories at or above two pair carry no kicker nudge, so estimateHandStrength
+  // returns the category's base value directly (see postflopStrength).
+  const twoPair = [
+    [card("A", "spades"), card("A", "hearts")],
+    [card("K", "clubs"), card("K", "diamonds"), card("5", "spades"), card("7", "diamonds"), card("9", "clubs")]
+  ] as const;
+  const trips = [
+    [card("A", "spades"), card("A", "hearts")],
+    [card("A", "diamonds"), card("5", "spades"), card("7", "diamonds"), card("9", "clubs"), card("J", "hearts")]
+  ] as const;
+  const straight = [
+    [card("5", "spades"), card("6", "hearts")],
+    [card("7", "diamonds"), card("8", "clubs"), card("9", "spades"), card("2", "diamonds"), card("K", "clubs")]
+  ] as const;
+  const wheelStraight = [
+    [card("A", "spades"), card("2", "hearts")],
+    [card("3", "diamonds"), card("4", "clubs"), card("5", "spades"), card("K", "diamonds"), card("9", "clubs")]
+  ] as const;
+  const flush = [
+    [card("A", "spades"), card("3", "spades")],
+    [card("K", "spades"), card("9", "spades"), card("4", "spades"), card("2", "diamonds"), card("7", "clubs")]
+  ] as const;
+  const fullHouse = [
+    [card("A", "spades"), card("A", "hearts")],
+    [card("A", "diamonds"), card("K", "clubs"), card("K", "spades"), card("5", "diamonds"), card("7", "clubs")]
+  ] as const;
+  const quads = [
+    [card("A", "spades"), card("A", "hearts")],
+    [card("A", "diamonds"), card("A", "clubs"), card("K", "spades"), card("5", "diamonds"), card("7", "clubs")]
+  ] as const;
+  const straightFlush = [
+    [card("5", "spades"), card("6", "spades")],
+    [card("7", "spades"), card("8", "spades"), card("9", "spades"), card("2", "diamonds"), card("K", "clubs")]
+  ] as const;
+
+  const strengthOf = ([hole, board]: readonly [readonly Card[], readonly Card[]]): number =>
+    estimateHandStrength([...hole], [...board]);
+
+  it.each([
+    ["two pair", twoPair, 0.5],
+    ["trips", trips, 0.62],
+    ["a straight", straight, 0.72],
+    ["a wheel straight (A-2-3-4-5)", wheelStraight, 0.72],
+    ["a flush", flush, 0.8],
+    ["a full house", fullHouse, 0.88],
+    ["four of a kind", quads, 0.95],
+    ["a straight flush", straightFlush, 0.99]
+  ])("scores %s at its category base", (_label, holding, expected) => {
+    expect(strengthOf(holding)).toBeCloseTo(expected, 5);
+  });
+
+  it("orders made-hand categories from two pair up to a straight flush", () => {
+    const ranked = [twoPair, trips, straight, flush, fullHouse, quads, straightFlush].map(strengthOf);
+
+    for (let index = 1; index < ranked.length; index += 1) {
+      expect(ranked[index]).toBeGreaterThan(ranked[index - 1] as number);
+    }
+  });
+});

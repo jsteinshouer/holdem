@@ -4,7 +4,12 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import type { Logger } from "./logger.js";
-import { createSqliteActiveTablePersistence } from "./activeTablePersistence.js";
+import {
+  createActiveTablePersistence,
+  createSqliteActiveTablePersistence,
+  type ActiveTablePersistencePort,
+  type ActiveTablePersistenceRecord
+} from "./activeTablePersistence.js";
 import { createTableStore } from "./tableStore.js";
 
 const defaults = {
@@ -73,6 +78,110 @@ describe("SQLite active table persistence", () => {
     ).toHaveLength(1);
   });
 });
+
+describe("active table persistence factory", () => {
+  it("returns null in memory mode so the store stays purely in memory", () => {
+    const port = createActiveTablePersistence(
+      { mode: "memory", sqlitePath: testDatabasePath(), inactivityTtlMs: 60000 },
+      createTestLogger()
+    );
+
+    expect(port).toBeNull();
+  });
+
+  it("returns a SQLite-backed port in sqlite mode", () => {
+    const port = createActiveTablePersistence(
+      { mode: "sqlite", sqlitePath: testDatabasePath(), inactivityTtlMs: 60000 },
+      createTestLogger()
+    );
+
+    expect(port).not.toBeNull();
+    expect(port?.loadActiveTables(1000)).toEqual([]);
+  });
+});
+
+describe("active table restore quarantine", () => {
+  it("quarantines a restored record whose schema version is unsupported", () => {
+    const record = captureSavedRecord();
+    const target = createCapturingPersistence([{ ...record, schemaVersion: 999 }]);
+
+    const restored = createTableStore(defaults, undefined, () => 1000, target);
+
+    expect(restored.getTableIds()).toEqual([]);
+    expect(target.quarantined).toEqual([
+      { tableId: record.tableId, reason: "unsupported active table persistence schema version" }
+    ]);
+  });
+
+  it("quarantines a restored record whose table id does not match its state", () => {
+    const record = captureSavedRecord();
+    const target = createCapturingPersistence([{ ...record, tableId: "mismatched-id" }]);
+
+    const restored = createTableStore(defaults, undefined, () => 1000, target);
+
+    expect(restored.getTableIds()).toEqual([]);
+    expect(target.quarantined).toEqual([
+      { tableId: "mismatched-id", reason: "unsupported active table persistence schema version" }
+    ]);
+  });
+
+  it("quarantines a restored record that fails to deserialize", () => {
+    const record = captureSavedRecord();
+    const corrupt: ActiveTablePersistenceRecord = {
+      ...record,
+      state: { ...record.state, table: { ...record.state.table, hostId: "missing-host" } }
+    };
+    const target = createCapturingPersistence([corrupt]);
+
+    const restored = createTableStore(defaults, undefined, () => 1000, target);
+
+    expect(restored.getTableIds()).toEqual([]);
+    expect(target.quarantined).toEqual([
+      { tableId: record.tableId, reason: "persisted active table host was not found" }
+    ]);
+  });
+});
+
+type CapturingPersistence = ActiveTablePersistencePort & {
+  saved: ActiveTablePersistenceRecord[];
+  quarantined: { tableId: string; reason: string }[];
+};
+
+function createCapturingPersistence(initial: ActiveTablePersistenceRecord[] = []): CapturingPersistence {
+  const saved: ActiveTablePersistenceRecord[] = [];
+  const quarantined: { tableId: string; reason: string }[] = [];
+
+  return {
+    saved,
+    quarantined,
+    loadActiveTables: () => initial,
+    saveTable: (record) => {
+      saved.push(record);
+    },
+    deleteExpiredTables: () => [],
+    quarantineTable: (tableId, reason) => {
+      quarantined.push({ tableId, reason });
+    }
+  };
+}
+
+// Runs a real store against a capturing port to obtain a genuine serialized
+// active-table record, then hands it back so tests can corrupt one field.
+function captureSavedRecord(): ActiveTablePersistenceRecord {
+  const source = createCapturingPersistence();
+  const store = createTableStore(defaults, undefined, () => 1000, source);
+  const host = store.createTable("Host");
+
+  store.joinTable(host.snapshot.tableId, "Grace");
+  store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+  const record = source.saved.at(-1);
+  if (!record) {
+    throw new Error("expected the store to persist an active table record");
+  }
+
+  return record;
+}
 
 function testDatabasePath(): string {
   return join(mkdtempSync(join(tmpdir(), "friendly-holdem-test-")), "active-tables.sqlite");
