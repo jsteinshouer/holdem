@@ -28,9 +28,12 @@ apps/server/src/
   activeTablePersistence.test.ts
   botStrategy.test.ts
   config.test.ts
+  logger.test.ts
+  realtime.test.ts                # Socket.IO handlers via a fake socket/io (no port bound)
   tableStore.test.ts
 apps/client/tests/
   pwa.test.ts
+  tableView.test.ts               # pure raise-validation / connection view helpers
   vite-config.test.ts
 packages/shared/src/
   index.test.ts
@@ -39,6 +42,12 @@ tests/e2e/
   reconnects-disconnects-inactive.spec.ts
   production-smoke.spec.ts        # run only by test:e2e:prod
 ```
+
+The Socket.IO layer lives in `apps/server/src/realtime.ts`, a dependency-injected
+factory extracted from the `index.ts` bootstrap so its handlers, guards, rate
+limiting, and broadcasts are unit-testable without binding a port. Likewise, the
+branchy client raise/connection logic lives in `apps/client/src/tableView.ts` as
+pure helpers so it can be tested without rendering React.
 
 ### Configuration
 
@@ -97,10 +106,11 @@ NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt pnpm exec playwright inst
 
 `pnpm test:e2e` runs each spec across the configured desktop and mobile browser projects, so some skips are expected by design:
 
-- The reconnect/disconnect/inactivity lifecycle spec runs **only in Chromium** — it covers browser storage, Socket.IO reconnects, and server timers once rather than multiplying the same lifecycle checks across every browser.
-- The mobile layout spec **skips desktop projects** because it is only meaningful in mobile browser projects.
+- The reconnect/disconnect/inactivity lifecycle spec (4 tests) runs **only in Chromium** — it covers browser storage, Socket.IO reconnects, and server timers once rather than multiplying the same lifecycle checks across every browser. That is 4 skips in each of the other four projects (16 total).
+- The mobile layout spec **skips the desktop projects** (chromium, firefox, webkit — 3 skips) because it is only meaningful in mobile browser projects.
+- The basic-betting settlement spec **skips the mobile projects** (mobile-chrome, mobile-safari — 2 skips) because mobile usability is covered by the mobile layout spec.
 
-Seeing `19 skipped` can therefore be expected when the skipped tests match those project filters.
+With all five projects installed, a healthy full run reports **9 passed, 21 skipped, 0 failed** (16 + 3 + 2 skips). If WebKit and mobile-safari are missing their system libraries (see *First-time E2E setup*), those 12 tests fail to launch instead — that is an environment gap, not a regression.
 
 ## Codex / PowerShell note
 
