@@ -18,7 +18,7 @@ For betting rules, hand lifecycle, pot/side-pot logic, legal actions, turn order
 
 Before marking an issue complete, or when asked to review TexasHoldem work, follow `docs/agents/texas-holdem/reviewer-agent.md`.
 
-For game-logic changes, tests are required unless the agent clearly explains why no test can be added.
+For game-logic changes, tests are required unless the agent clearly explains why no test can be added. See `docs/testing.md` for the testing strategy, coverage expectations, and how to run each suite.
 
 ## Mission
 You are an engineering assistant working in this repository. Optimize for correctness, minimal diffs, testable changes, and adherence to repo standards.
@@ -114,6 +114,8 @@ Lint / Static Check: pnpm.cmd lint
 Unit Tests: pnpm.cmd test
 
 Integration Tests: pnpm.cmd test:e2e
+
+See `docs/testing.md` for scoped/single-file runs, the production smoke suite, and intentional E2E skips.
 
 
 ### Run Locally

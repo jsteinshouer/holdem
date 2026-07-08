@@ -120,9 +120,9 @@ If a persisted active table cannot be restored because its state is corrupted or
 
 ## Testing Strategy
 
-- Domain engine tests are the foundation and should be written before UI polish.
-- Domain tests should cover deck uniqueness, blinds, legal actions, betting progression, all-in, side pots, split pots, showdown, and heads-up blind/button rules.
-- Playwright E2E tests should cover creating a table, joining from an invite link, starting a hand, representative player actions, reconnect behavior, and mobile turn-focused layout usability.
+The domain engine is the testing foundation: it is a pure module (see Domain Engine Responsibilities) that must be testable without Socket.IO, React, or a running server, and its tests are written before UI polish. Vitest covers domain and unit logic; Playwright covers the end-to-end user path across desktop and mobile browsers.
+
+See [testing.md](testing.md) for the full strategy, test layers, coverage expectations, and how to run each suite.
 
 ## Security And Privacy Boundaries
 

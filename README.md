@@ -35,16 +35,9 @@ pnpm install
 pnpm dev
 ```
 
-## E2E test skips
+## Testing
 
-`pnpm test:e2e` runs each Playwright spec across the configured desktop and mobile browser projects. Some skips are intentional:
-
-- The reconnect/disconnect/inactivity lifecycle spec runs only in Chromium because it covers browser storage, Socket.IO reconnects, and server timers once without multiplying the same lifecycle checks across every browser.
-- The mobile layout spec skips desktop projects because it is only meaningful in mobile browser projects.
-
-For example, seeing `19 skipped` can be expected when the skipped tests match those project filters.
-
-`pnpm test:e2e:prod` builds the client, server, and shared package, then starts the compiled server and verifies that the built React app is playable from separate browser sessions through the Node service.
+See [docs/testing.md](docs/testing.md) for the full testing strategy, test layers, how to run each suite, and why some E2E tests are intentionally skipped.
 
 pnpm dev runs both packages in parallel:
 
