@@ -7,8 +7,8 @@ test("production build serves the app and supports a multiplayer hand path", asy
   const playerPage = await joinTable(browser, inviteLink, "Grace");
 
   await expect(page).toHaveURL(/\/table\//);
-  await expect(page.getByLabel("Invite link")).toHaveValue(/\/table\//);
-  await expect(playerPage.locator("article", { hasText: "Seat 2" }).getByText("Grace")).toBeVisible();
+  await expect(page.getByLabel("Invite link", { exact: true })).toHaveValue(/\/table\//);
+  await expect(playerPage.getByLabel("Seated players").locator("article", { hasText: "Seat 2" }).getByText("Grace")).toBeVisible();
 
   await page.getByRole("button", { name: "Start hand" }).click();
   await expect(page.getByRole("heading", { name: "Preflop" })).toBeVisible();
@@ -18,7 +18,7 @@ test("production build serves the app and supports a multiplayer hand path", asy
   await playerPage.getByRole("button", { name: "Check" }).click();
 
   await expect(page.getByRole("heading", { name: "Flop" })).toBeVisible();
-  await expect(playerPage.getByText("Flop dealt.")).toBeVisible();
+  await expect(playerPage.getByLabel("Public action log").getByText("Flop dealt.")).toBeVisible();
 });
 
 async function createTable(page: Page, displayName: string): Promise<string> {
@@ -27,7 +27,7 @@ async function createTable(page: Page, displayName: string): Promise<string> {
   await page.getByRole("button", { name: "Create table" }).click();
   await expect(page.getByRole("heading", { name: /Table / })).toBeVisible();
 
-  return page.getByLabel("Invite link").inputValue();
+  return page.getByLabel("Invite link", { exact: true }).inputValue();
 }
 
 function skipMobile(testInfo: TestInfo): void {

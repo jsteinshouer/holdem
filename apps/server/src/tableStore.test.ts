@@ -540,7 +540,7 @@ describe("table store", () => {
   });
 
   it("rejects illegal actions without mutating table state", () => {
-    const store = createTableStore(defaults);
+    const store = createTableStore(defaults, undefined, () => 1_000);
     const host = store.createTable("Host");
     const player = store.joinTable(host.snapshot.tableId, "Grace");
 

@@ -16,14 +16,14 @@ test("two players can play a basic betting hand through settlement", async ({ br
 
   await clickRoomButton(page, "Start hand");
   await expect(page.getByRole("heading", { name: "Preflop" })).toBeVisible();
-  await expect(playerPage.getByText("Grace posted big blind $10.")).toBeVisible();
+  await expect(playerPage.getByLabel("Public action log").getByText("Grace posted big blind $10.")).toBeVisible();
 
   await page.getByRole("button", { name: "Call" }).click();
   await expect(playerPage.getByRole("button", { name: "Check" })).toBeEnabled();
 
   await playerPage.getByRole("button", { name: "Check" }).click();
   await expect(page.getByRole("heading", { name: "Flop" })).toBeVisible();
-  await expect(playerPage.getByText("Flop dealt.")).toBeVisible();
+  await expect(playerPage.getByLabel("Public action log").getByText("Flop dealt.")).toBeVisible();
 
   await playerPage.getByRole("button", { name: "Check" }).click();
   await page.getByRole("button", { name: "Check" }).click();
@@ -37,7 +37,7 @@ test("two players can play a basic betting hand through settlement", async ({ br
   await page.getByRole("button", { name: "Check" }).click();
 
   await expect(page.getByRole("heading", { name: "Settled" })).toBeVisible();
-  await expect(page.getByText(/\$20 from the main pot/)).toBeVisible();
+  await expect(page.getByLabel("Public action log").getByText(/\$20 from the main pot/)).toBeVisible();
   await expect(playerPage.getByRole("heading", { name: "Settled" })).toBeVisible();
 });
 

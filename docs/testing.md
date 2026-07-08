@@ -69,6 +69,23 @@ pnpm -r test                                             # full unit validation
 
 Recommended order when validating a change: narrowest unit test first → `pnpm -r test` → `pnpm typecheck` → `pnpm test:e2e` if the change touches realtime/UI behavior.
 
+### First-time E2E setup (browsers + system libraries)
+
+Playwright needs the browser binaries and, on Linux, their system libraries:
+
+```bash
+pnpm exec playwright install               # download chromium, firefox, webkit
+pnpm exec playwright install-deps          # install OS libraries (needs sudo)
+```
+
+`install-deps` runs `apt-get` under `sudo`, so run it in a terminal where you can enter your password. **The WebKit and mobile-safari projects will not launch without it** — they fail at browser startup with `Host system is missing dependencies` (e.g. `libgtk-4.so.1`, `libwoff2dec.so.1`, `libgstreamer*`). Chromium and firefox generally run without the extra libraries, so on a constrained machine you can still validate most of the suite with `--project=chromium --project=firefox`.
+
+If browser downloads fail behind a TLS-intercepting proxy with `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`, point Node at the system CA bundle for the install (do **not** disable TLS verification):
+
+```bash
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt pnpm exec playwright install
+```
+
 ## Intentional E2E skips
 
 `pnpm test:e2e` runs each spec across the configured desktop and mobile browser projects, so some skips are expected by design:

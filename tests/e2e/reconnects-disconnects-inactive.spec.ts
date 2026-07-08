@@ -6,14 +6,14 @@ test("seated player refresh restores the same seat", async ({ browser, page }, t
   const inviteLink = await createTable(page, "Host");
   const playerPage = await joinTable(browser, inviteLink, "Grace");
 
-  await expect(playerPage.getByText("Seat 2")).toBeVisible();
-  await expect(playerPage.locator("article", { hasText: "Seat 2" }).getByText("Grace")).toBeVisible();
+  await expect(playerPage.getByLabel("Seated players").getByText("Seat 2")).toBeVisible();
+  await expect(playerPage.getByLabel("Seated players").locator("article", { hasText: "Seat 2" }).getByText("Grace")).toBeVisible();
 
   await playerPage.reload();
 
   await expect(playerPage.getByRole("heading", { name: /Table / })).toBeVisible();
   await expect(playerPage.getByLabel("Your display name")).toHaveCount(0);
-  await expect(playerPage.locator("article", { hasText: "Seat 2" }).getByText("Grace")).toBeVisible();
+  await expect(playerPage.getByLabel("Seated players").locator("article", { hasText: "Seat 2" }).getByText("Grace")).toBeVisible();
 });
 
 test("spectator refresh restores spectator identity", async ({ browser, page }, testInfo) => {
@@ -46,9 +46,9 @@ test("disconnected current actor auto-folds after grace period", async ({ browse
 
   await page.close();
 
-  await expect(playerPage.getByText("Host folded.")).toBeVisible({ timeout: 5000 });
+  await expect(playerPage.getByLabel("Public action log").getByText("Host folded.")).toBeVisible({ timeout: 5000 });
   await expect(playerPage.getByRole("heading", { name: "Settled" })).toBeVisible();
-  await expect(playerPage.getByText("Grace won $15 after everyone else folded.")).toBeVisible();
+  await expect(playerPage.getByLabel("Public action log").getByText("Grace won $15 after everyone else folded.")).toBeVisible();
 });
 
 test("host can auto-fold connected inactive actor after threshold", async ({ browser, page }, testInfo) => {
@@ -65,7 +65,7 @@ test("host can auto-fold connected inactive actor after threshold", async ({ bro
   await autoFoldButton.click();
 
   await expect(page.getByRole("heading", { name: "Settled" })).toBeVisible();
-  await expect(page.getByText("Host folded.")).toBeVisible();
+  await expect(page.getByLabel("Public action log").getByText("Host folded.")).toBeVisible();
 });
 
 function skipNonChromium(testInfo: TestInfo): void {
@@ -78,7 +78,7 @@ async function createTable(page: Page, displayName: string): Promise<string> {
   await page.getByRole("button", { name: "Create table" }).click();
   await expect(page.getByRole("heading", { name: /Table / })).toBeVisible();
 
-  return page.getByLabel("Invite link").inputValue();
+  return page.getByLabel("Invite link", { exact: true }).inputValue();
 }
 
 async function joinTable(browser: Browser, inviteLink: string, displayName: string): Promise<Page> {
