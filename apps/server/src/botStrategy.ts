@@ -1,4 +1,4 @@
-import type { Card, CardRank, LegalAction } from "@friendly-holdem/shared";
+import { handCategory, rankValue, type Card, type LegalAction } from "@friendly-holdem/shared";
 
 // Decision logic for a simple, rule-based bot player. The strategy is a pure
 // function of the bot's own player-specific view of the hand plus an injected
@@ -171,7 +171,7 @@ function preflopStrength(holeCards: Card[]): number {
 }
 
 function postflopStrength(cards: Card[]): number {
-  const category = bestHandCategory(cards);
+  const category = handCategory(cards);
   const baseByCategory = [0.18, 0.35, 0.5, 0.62, 0.72, 0.8, 0.88, 0.95, 0.99];
   const base = baseByCategory[category] ?? 0.18;
   const topRank = Math.max(...cards.map((card) => rankValue(card.rank)));
@@ -179,98 +179,6 @@ function postflopStrength(cards: Card[]): number {
   const kicker = category <= 1 ? ((topRank - 2) / 12) * 0.1 : 0;
 
   return clamp(base + kicker, 0, 1);
-}
-
-// Returns the standard hand category for up to seven cards, where 0 is high
-// card and 8 is a straight flush, mirroring the server hand evaluator's order.
-function bestHandCategory(cards: Card[]): number {
-  const values = cards.map((card) => rankValue(card.rank));
-  const counts = new Map<number, number>();
-
-  for (const value of values) {
-    counts.set(value, (counts.get(value) ?? 0) + 1);
-  }
-
-  const countValues = [...counts.values()].sort((left, right) => right - left);
-  const flushValues = cards
-    .filter((card) => cards.filter((candidate) => candidate.suit === card.suit).length >= 5)
-    .map((card) => rankValue(card.rank));
-  const hasFlush = flushValues.length >= 5;
-  const hasStraight = straightHighCard(values) !== null;
-  const hasStraightFlush = hasFlush && straightHighCard(flushValues) !== null;
-
-  if (hasStraightFlush) {
-    return 8;
-  }
-
-  if (countValues[0] === 4) {
-    return 7;
-  }
-
-  if (countValues[0] === 3 && (countValues[1] ?? 0) >= 2) {
-    return 6;
-  }
-
-  if (hasFlush) {
-    return 5;
-  }
-
-  if (hasStraight) {
-    return 4;
-  }
-
-  if (countValues[0] === 3) {
-    return 3;
-  }
-
-  if (countValues[0] === 2 && (countValues[1] ?? 0) === 2) {
-    return 2;
-  }
-
-  if (countValues[0] === 2) {
-    return 1;
-  }
-
-  return 0;
-}
-
-function straightHighCard(values: number[]): number | null {
-  const uniqueValues = [...new Set(values)].sort((left, right) => right - left);
-
-  if (uniqueValues.includes(14)) {
-    uniqueValues.push(1);
-  }
-
-  for (let index = 0; index <= uniqueValues.length - 5; index += 1) {
-    const highCard = uniqueValues[index] ?? 0;
-    const straight = [0, 1, 2, 3, 4].every((offset) => uniqueValues[index + offset] === highCard - offset);
-
-    if (straight) {
-      return highCard;
-    }
-  }
-
-  return null;
-}
-
-function rankValue(rank: CardRank): number {
-  const values: Record<CardRank, number> = {
-    "2": 2,
-    "3": 3,
-    "4": 4,
-    "5": 5,
-    "6": 6,
-    "7": 7,
-    "8": 8,
-    "9": 9,
-    "10": 10,
-    J: 11,
-    Q: 12,
-    K: 13,
-    A: 14
-  };
-
-  return values[rank];
 }
 
 function clamp(value: number, min: number, max: number): number {

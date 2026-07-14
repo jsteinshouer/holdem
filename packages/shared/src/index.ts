@@ -1,3 +1,5 @@
+export * from "./handEvaluator.js";
+
 export type BlindStructure = {
   smallBlind: number;
   bigBlind: number;

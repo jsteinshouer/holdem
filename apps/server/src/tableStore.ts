@@ -1,15 +1,18 @@
 import { randomBytes } from "node:crypto";
-import type {
-  Card,
-  CardRank,
-  CardSuit,
-  ChatMessage,
-  HandSnapshot,
-  LegalAction,
-  TableDefaults,
-  TableSnapshot,
-  TableSessionResponse,
-  ViewerRole
+import {
+  compareHandScores,
+  evaluateHand,
+  type Card,
+  type CardRank,
+  type CardSuit,
+  type ChatMessage,
+  type HandScore,
+  type HandSnapshot,
+  type LegalAction,
+  type TableDefaults,
+  type TableSnapshot,
+  type TableSessionResponse,
+  type ViewerRole
 } from "@friendly-holdem/shared";
 import { ACTIVE_TABLE_SCHEMA_VERSION, type ActiveTablePersistencePort } from "./activeTablePersistence.js";
 import { simpleBotStrategy, type BotDecision, type BotStrategy } from "./botStrategy.js";
@@ -1465,10 +1468,10 @@ function settleShowdown(table: PrivateTable, hand: ActiveHand, now: () => number
     }
 
     const bestScore = rankedEligiblePlayers.reduce((best, ranked) =>
-      compareScores(ranked.score, best.score) > 0 ? ranked : best
+      compareHandScores(ranked.score, best.score) > 0 ? ranked : best
     ).score;
     const winners = rankedEligiblePlayers
-      .filter((ranked) => compareScores(ranked.score, bestScore) === 0)
+      .filter((ranked) => compareHandScores(ranked.score, bestScore) === 0)
       .sort((left, right) => left.state.seatNumber - right.state.seatNumber);
     const baseShare = Math.floor(pot.amount / winners.length);
     let remainder = pot.amount % winners.length;
@@ -1604,141 +1607,14 @@ function formatStreet(phase: ActiveHand["phase"]): string {
   return phase === "flop" ? "Flop" : phase === "turn" ? "Turn" : phase === "river" ? "River" : "Street";
 }
 
-type HandScore = [number, ...number[]];
-
 type Pot = {
   amount: number;
   eligibleParticipantIds: string[];
 };
 
 const simpleHandEvaluator: HandEvaluator = {
-  evaluate: evaluateBestHand
+  evaluate: evaluateHand
 };
-
-function evaluateBestHand(cards: Card[]): HandScore {
-  const rankValues = cards.map((card) => rankValue(card.rank));
-  const counts = new Map<number, number>();
-
-  for (const value of rankValues) {
-    counts.set(value, (counts.get(value) ?? 0) + 1);
-  }
-
-  const groups = [...counts.entries()].sort(
-    ([leftRank, leftCount], [rightRank, rightCount]) => rightCount - leftCount || rightRank - leftRank
-  );
-  const flushCards = cards
-    .filter((card) => cards.filter((candidate) => candidate.suit === card.suit).length >= 5)
-    .map((card) => rankValue(card.rank))
-    .sort((left, right) => right - left);
-  const straightHigh = straightHighCard(rankValues);
-  const straightFlushHigh = flushCards.length >= 5 ? straightHighCard(flushCards) : null;
-  const four = groups.find(([, count]) => count === 4);
-  const threes = groups.filter(([, count]) => count === 3);
-  const pairs = groups.filter(([, count]) => count === 2);
-
-  if (straightFlushHigh) {
-    return [8, straightFlushHigh];
-  }
-
-  if (four) {
-    return [7, four[0], ...topRanks(rankValues, 1, [four[0]])];
-  }
-
-  if (threes.length > 0 && (pairs.length > 0 || threes.length > 1)) {
-    const threeRank = threes[0]?.[0] ?? 0;
-    const pairRank = pairs[0]?.[0] ?? threes[1]?.[0] ?? 0;
-
-    return [6, threeRank, pairRank];
-  }
-
-  if (flushCards.length >= 5) {
-    return [5, ...topRanks(flushCards, 5)];
-  }
-
-  if (straightHigh) {
-    return [4, straightHigh];
-  }
-
-  if (threes.length > 0) {
-    const threeRank = threes[0]?.[0] ?? 0;
-
-    return [3, threeRank, ...topRanks(rankValues, 2, [threeRank])];
-  }
-
-  if (pairs.length >= 2) {
-    const pairRanks = pairs.slice(0, 2).map(([rank]) => rank);
-
-    return [2, ...pairRanks, ...topRanks(rankValues, 1, pairRanks)];
-  }
-
-  if (pairs.length === 1) {
-    const pairRank = pairs[0]?.[0] ?? 0;
-
-    return [1, pairRank, ...topRanks(rankValues, 3, [pairRank])];
-  }
-
-  return [0, ...topRanks(rankValues, 5)];
-}
-
-function rankValue(rank: CardRank): number {
-  const values: Record<CardRank, number> = {
-    "2": 2,
-    "3": 3,
-    "4": 4,
-    "5": 5,
-    "6": 6,
-    "7": 7,
-    "8": 8,
-    "9": 9,
-    "10": 10,
-    J: 11,
-    Q: 12,
-    K: 13,
-    A: 14
-  };
-
-  return values[rank];
-}
-
-function straightHighCard(values: number[]): number | null {
-  const uniqueValues = [...new Set(values)].sort((left, right) => right - left);
-
-  if (uniqueValues.includes(14)) {
-    uniqueValues.push(1);
-  }
-
-  for (let index = 0; index <= uniqueValues.length - 5; index += 1) {
-    const highCard = uniqueValues[index] ?? 0;
-    const straight = [0, 1, 2, 3, 4].every((offset) => uniqueValues[index + offset] === highCard - offset);
-
-    if (straight) {
-      return highCard;
-    }
-  }
-
-  return null;
-}
-
-function topRanks(values: number[], count: number, excludedRanks: number[] = []): number[] {
-  return [...new Set(values)]
-    .filter((value) => !excludedRanks.includes(value))
-    .sort((left, right) => right - left)
-    .slice(0, count);
-}
-
-function compareScores(left: HandScore, right: HandScore): number {
-  const length = Math.max(left.length, right.length);
-
-  for (let index = 0; index < length; index += 1) {
-    const difference = (left[index] ?? 0) - (right[index] ?? 0);
-
-    if (difference !== 0) {
-      return difference;
-    }
-  }
-
-  return 0;
-}
 
 function legalActionsFor(player: Participant, callAmount: number, hand: ActiveHand): LegalAction[] {
   if (hand.phase === "settled") {
