@@ -2,6 +2,23 @@
 
 Private-link, play-money Texas Hold 'em for friends.
 
+## Architecture
+
+Server-authoritative realtime app: the server owns all poker state and broadcasts player-specific snapshots. See [docs/architecture.md](docs/architecture.md) for detail.
+
+```mermaid
+flowchart LR
+  Browser["apps/client<br/>(React + Vite)"]
+  Server["apps/server<br/>(Node + Socket.IO)"]
+  Domain["poker logic<br/>(tableStore.ts)"]
+  Store["persistence<br/>(memory / SQLite)"]
+
+  Browser <-->|"Socket.IO events<br/>(intents / snapshots)"| Server
+  Server --> Domain
+  Domain --> Server
+  Server <--> Store
+```
+
 ## Workspace
 
 - `apps/client` - React, Vite, and TypeScript browser app.
@@ -21,7 +38,7 @@ pnpm test:e2e
 pnpm test:e2e:prod
 ```
 
-Copy `.env.example` to `.env.local` or export matching environment variables before running the server with non-default settings.
+Copy `.env.example` to `.env` (loaded by the server dev script) or export matching environment variables before running the server with non-default settings.
 
 Bash with NVM:
 
