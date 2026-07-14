@@ -731,6 +731,37 @@ describe("table store", () => {
     expect(total).toBe(7);
   });
 
+  it("recovers after a heads-up all-in-blind run-out so the next hand can be dealt", () => {
+    // Proves the table is unstuck end-to-end: the auto-run reaches settlement and the
+    // host can deal the next hand. In an all-in showdown a player may bust; rebuying any
+    // busted seat (the existing between-hands host flow) restores two funded players, so
+    // recovery holds regardless of which player wins the random run-out. We assert only
+    // that a second hand is dealt — it may itself immediately run out if the winner is
+    // left short-stacked, which is correct behavior, so its phase is not asserted.
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    const grace = store.joinTable(host.snapshot.tableId, "Grace");
+    const privateTable = store.getTable(host.snapshot.tableId);
+
+    privateTable!.participants.get(host.snapshot.viewerParticipantId)!.stack = 3;
+    privateTable!.participants.get(grace.snapshot.viewerParticipantId)!.stack = 4;
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    const settled = store.snapshotFor(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(settled.hand.phase).toBe("settled");
+
+    for (const seat of settled.seats) {
+      if (seat.player && seat.player.stack === 0) {
+        store.approveRebuy(host.snapshot.tableId, host.snapshot.viewerParticipantId, seat.player.id);
+      }
+    }
+
+    const next = store.dealNextHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(next.snapshot.hand.handNumber).toBe(2);
+  });
+
   it("keeps a disconnected all-in player eligible for pots", () => {
     const store = createTableStore({ ...defaults, startingStack: 20 });
     const host = store.createTable("Host");
