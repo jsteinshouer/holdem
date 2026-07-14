@@ -998,7 +998,6 @@ function createHand(
   const buttonSeat = previousHand ? nextActiveSeat(activePlayers, previousHand.buttonSeat) : activePlayers[0]?.seatNumber ?? 0;
   const smallBlindSeat = activePlayers.length === 2 ? buttonSeat : nextActiveSeat(activePlayers, buttonSeat);
   const bigBlindSeat = nextActiveSeat(activePlayers, smallBlindSeat);
-  const currentActorSeat = nextActiveSeat(activePlayers, bigBlindSeat);
   const handParticipants = new Map<string, HandParticipantState>();
 
   for (const player of activePlayers) {
@@ -1025,7 +1024,7 @@ function createHand(
   const smallBlindAmount = postBlind(smallBlindPlayer, handParticipants, table.defaults.blinds.smallBlind);
   const bigBlindAmount = postBlind(bigBlindPlayer, handParticipants, table.defaults.blinds.bigBlind);
 
-  return {
+  const hand: ActiveHand = {
     handNumber: previousHand ? previousHand.handNumber + 1 : 1,
     phase: "preflop",
     deck,
@@ -1033,7 +1032,7 @@ function createHand(
     buttonSeat,
     smallBlindSeat,
     bigBlindSeat,
-    currentActorSeat,
+    currentActorSeat: bigBlindSeat,
     currentActorSince: now(),
     participants: handParticipants,
     pot: smallBlindAmount + bigBlindAmount,
@@ -1046,6 +1045,27 @@ function createHand(
     settlementSummary: null,
     shouldRevealHoleCards: false
   };
+
+  // A short-stacked blind poster can already be all-in before anyone acts, so the first
+  // actor must be chosen from players who can still voluntarily act (skipping all-in and
+  // folded seats). Preflop betting is only closed before it begins when no live player
+  // still owes a call: either everyone is all-in, or the lone live player has already
+  // matched the current bet (e.g. a big blind whose only opponent is all-in for less). In
+  // that case run the board out to showdown; otherwise the live player is still owed their
+  // turn to call or fold, so give them the action.
+  const liveStates = activeHandStates(hand).filter((state) => !state.isAllIn);
+  const [loneLiveState] = liveStates;
+  const bettingClosedBeforeAction =
+    liveStates.length === 0 ||
+    (liveStates.length === 1 && loneLiveState?.currentBet === hand.currentBet);
+
+  if (bettingClosedBeforeAction) {
+    advanceBettingRound(table, hand, now);
+  } else {
+    setCurrentActorSeat(hand, nextActorSeat(hand, bigBlindSeat), now);
+  }
+
+  return hand;
 }
 
 function createHandSnapshot(table: PrivateTable, viewer: Participant): HandSnapshot {
