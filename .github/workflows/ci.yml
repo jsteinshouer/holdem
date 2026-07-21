@@ -1,0 +1,100 @@
+name: CI
+
+# Review pipeline: runs on every PR into main, and can be launched manually.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel superseded runs on the same PR/branch to save minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (typecheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Workspace packages import @friendly-holdem/shared via its built dist
+      # (package.json main -> ./dist/index.js), so it must be compiled first.
+      - name: Build shared package
+        run: pnpm --filter @friendly-holdem/shared build
+      - run: pnpm lint
+
+  test-backend:
+    name: Unit tests (backend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Workspace packages import @friendly-holdem/shared via its built dist
+      # (package.json main -> ./dist/index.js), so it must be compiled first.
+      - name: Build shared package
+        run: pnpm --filter @friendly-holdem/shared build
+      - name: Run server + shared unit tests
+        run: pnpm --filter @friendly-holdem/server --filter @friendly-holdem/shared test
+
+  test-frontend:
+    name: Unit tests (frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Workspace packages import @friendly-holdem/shared via its built dist
+      # (package.json main -> ./dist/index.js), so it must be compiled first.
+      - name: Build shared package
+        run: pnpm --filter @friendly-holdem/shared build
+      - name: Run client unit tests
+        run: pnpm --filter @friendly-holdem/client test
+
+  e2e:
+    name: E2E tests (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Workspace packages import @friendly-holdem/shared via its built dist
+      # (package.json main -> ./dist/index.js), so it must be compiled first.
+      - name: Build shared package
+        run: pnpm --filter @friendly-holdem/shared build
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps
+      # The server dev script reads --env-file=../../.env, which is gitignored.
+      # The Playwright config injects the vars it needs; an empty file is enough.
+      - name: Create empty .env for local dev servers
+        run: touch .env
+      - name: Run end-to-end tests
+        run: pnpm test:e2e
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
