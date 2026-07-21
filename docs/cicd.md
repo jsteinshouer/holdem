@@ -91,12 +91,22 @@ image and complete. Subsequent deploys need no further action.
 - Watch runs under the repo's **Actions** tab. The CD run logs the new revision
   URL and prints whether it promoted or rolled back.
 
-## Optional: gate CD behind an approval
+## Manual-approval gate
 
-To require a manual approval before deploys, create a GitHub **Environment** (e.g.
-`production`) with required reviewers, set `environment: production` on the
-`deploy` job in `cd.yml`, and add a second OIDC federated credential on the Azure
-AD app with subject `repo:<owner>/<repo>:environment:production`.
+CD deploys are gated behind the **`production`** GitHub Environment (required
+reviewer). On each run the `build` job builds and pushes the image, then the
+`deploy` job **pauses until a reviewer approves** it in the run's page (or the
+repo's Environments UI). This is wired up as:
+
+- a `production` environment with a required reviewer (repo **Settings →
+  Environments → production**);
+- `environment: production` on the `deploy` job in `cd.yml`;
+- a dedicated Azure AD federated credential (`github-env` in the Pulumi program)
+  with subject `<sub_claim_prefix>:environment:production`, because a job bound to
+  an environment presents `...:environment:<name>` instead of `...:ref:...`.
+
+To change reviewers, wait timer, or allowed branches, edit the environment under
+**Settings → Environments**.
 
 ## Tear down
 

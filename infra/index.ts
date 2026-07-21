@@ -97,6 +97,18 @@ new azuread.ApplicationFederatedIdentityCredential("github-main", {
   audiences: ["api://AzureADTokenExchange"],
 });
 
+// The CD deploy job runs in the "production" GitHub Environment (manual-approval
+// gate). Jobs bound to an environment present sub=...:environment:<name> instead
+// of ...:ref:..., so it needs its own federated credential.
+const githubEnvironment = config.get("githubEnvironment") ?? "production";
+new azuread.ApplicationFederatedIdentityCredential("github-env", {
+  applicationId: adApp.id,
+  displayName: "github-env",
+  issuer: "https://token.actions.githubusercontent.com",
+  subject: `${githubSubjectPrefix}:environment:${githubEnvironment}`,
+  audiences: ["api://AzureADTokenExchange"],
+});
+
 // The service principal manages the Container App (revisions, traffic, image
 // updates). Contributor on the resource group covers it; tighten later if desired.
 const contributorName = new random.RandomUuid("sp-contributor-name");

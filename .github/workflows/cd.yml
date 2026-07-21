@@ -67,6 +67,13 @@ jobs:
     name: Deploy, smoke test & promote
     needs: build
     runs-on: ubuntu-latest
+    # Requires manual approval (production environment protection rule). The build
+    # job still runs and pushes the image; this job pauses until a reviewer
+    # approves. Note: using an environment changes the OIDC subject to
+    # ...:environment:production, matched by a dedicated federated credential.
+    environment:
+      name: production
+      url: https://friendly-holdem.bravesmoke-9c27d4cf.centralus.azurecontainerapps.io
     env:
       RG: ${{ vars.AZURE_RESOURCE_GROUP }}
       APP: ${{ vars.AZURE_CONTAINER_APP }}
