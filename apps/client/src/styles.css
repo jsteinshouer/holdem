@@ -1,12 +1,55 @@
 :root {
-  color: #f5ead2;
-  background: #12362f;
+  /* Dark theme (default). Tones are stored as bare "R G B" triples so they can
+     be reused at any alpha via rgb(var(--tone-x) / N%). */
+  --tone-ink: 245 234 210;
+  --tone-deep: 7 25 24;
+  --tone-felt: 18 54 47;
+  --tone-felt-hi: 11 68 55;
+  --tone-felt-lo: 8 29 30;
+  --tone-shell-lo: 8 22 22;
+  --tone-panel: 13 43 39;
+  --tone-scrim: 3 10 10;
+  --tone-gold: 216 170 71;
+  --tone-highlight: 252 230 161;
+  --tone-onaccent: 29 33 27;
+  --tone-paper: 255 249 235;
+  --tone-white: 255 255 255;
+  --tone-shadow: 0 0 0;
+  --tone-good: 94 190 132;
+  --c-suit-red: #9c2d2d;
+  --c-error: #ffb59f;
+  --c-connected: #bdf2c8;
+
+  color: rgb(var(--tone-ink));
+  background: rgb(var(--tone-felt));
   font-family:
     "Trebuchet MS",
     Verdana,
     sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+}
+
+:root[data-theme="light"] {
+  /* Light theme. The same tone roles are remapped to a warm, low-glare palette;
+     because every surface reads its color through these variables, remapping
+     here re-skins the whole app. Cards keep their paper look in both themes. */
+  --tone-ink: 34 43 39;
+  --tone-deep: 255 252 245;
+  --tone-felt: 226 236 226;
+  --tone-felt-hi: 224 236 223;
+  --tone-felt-lo: 205 222 205;
+  --tone-shell-lo: 232 238 228;
+  --tone-panel: 249 246 238;
+  --tone-scrim: 30 41 38;
+  /* gold stays bright so it works as a button fill under dark text;
+     highlight goes deep so it stays legible as accent text on light panels. */
+  --tone-gold: 197 152 52;
+  --tone-highlight: 138 96 20;
+  --tone-good: 32 122 66;
+  --c-suit-red: #b0342a;
+  --c-error: #b23a2a;
+  --c-connected: #1f7a45;
 }
 
 * {
@@ -27,25 +70,25 @@ textarea {
 
 button {
   min-height: 44px;
-  border: 1px solid #d8aa47;
+  border: 1px solid rgb(var(--tone-gold));
   border-radius: 6px;
-  color: #1d211b;
-  background: #d8aa47;
+  color: rgb(var(--tone-onaccent));
+  background: rgb(var(--tone-gold));
   font-weight: 800;
   cursor: pointer;
 }
 
 button:disabled {
-  border-color: rgb(245 234 210 / 18%);
-  color: rgb(245 234 210 / 42%);
-  background: rgb(245 234 210 / 8%);
+  border-color: rgb(var(--tone-ink) / 18%);
+  color: rgb(var(--tone-ink) / 42%);
+  background: rgb(var(--tone-ink) / 8%);
   cursor: not-allowed;
 }
 
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
-  outline: 3px solid #f5ead2;
+  outline: 3px solid rgb(var(--tone-ink));
   outline-offset: 3px;
 }
 
@@ -53,9 +96,9 @@ textarea:focus-visible {
   min-height: 100vh;
   padding: clamp(16px, 4vw, 40px);
   background:
-    linear-gradient(145deg, rgb(18 54 47 / 96%), rgb(8 22 22 / 98%)),
-    repeating-linear-gradient(90deg, rgb(255 255 255 / 4%) 0 1px, transparent 1px 42px),
-    #12362f;
+    linear-gradient(145deg, rgb(var(--tone-felt) / 96%), rgb(var(--tone-shell-lo) / 98%)),
+    repeating-linear-gradient(90deg, rgb(var(--tone-white) / 4%) 0 1px, transparent 1px 42px),
+    rgb(var(--tone-felt));
 }
 
 .room-board {
@@ -73,7 +116,7 @@ textarea:focus-visible {
 
 .eyebrow {
   margin: 0 0 8px;
-  color: #d8aa47;
+  color: rgb(var(--tone-highlight));
   font-size: 0.76rem;
   font-weight: 900;
   letter-spacing: 0;
@@ -105,25 +148,56 @@ h2 {
   flex: 0 0 auto;
   min-width: 88px;
   padding: 9px 13px;
-  border: 1px solid rgb(245 234 210 / 24%);
+  border: 1px solid rgb(var(--tone-ink) / 24%);
   border-radius: 999px;
-  color: rgb(245 234 210 / 78%);
+  color: rgb(var(--tone-ink) / 78%);
   text-align: center;
   text-transform: capitalize;
 }
 
 .status-pill--connected {
-  border-color: rgb(94 190 132 / 62%);
-  color: #bdf2c8;
+  border-color: rgb(var(--tone-good) / 62%);
+  color: var(--c-connected);
+}
+
+.masthead-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  padding: 9px 12px;
+  border: 1px solid rgb(var(--tone-ink) / 24%);
+  border-radius: 999px;
+  color: rgb(var(--tone-ink));
+  background: rgb(var(--tone-deep) / 40%);
+  font-size: 1.1rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* Ease surfaces between themes instead of hard-cutting the palette. */
+.app-shell,
+.app-shell * {
+  transition:
+    background-color 0.25s ease,
+    border-color 0.25s ease,
+    color 0.25s ease;
 }
 
 .entry-panel,
 .table-summary,
 .rail-panel {
-  border: 1px solid rgb(245 234 210 / 18%);
+  border: 1px solid rgb(var(--tone-ink) / 18%);
   border-radius: 8px;
-  background: rgb(7 25 24 / 74%);
-  box-shadow: 0 22px 70px rgb(0 0 0 / 24%);
+  background: rgb(var(--tone-deep) / 74%);
+  box-shadow: 0 22px 70px rgb(var(--tone-shadow) / 24%);
 }
 
 .entry-panel {
@@ -135,7 +209,7 @@ h2 {
 
 .entry-panel label,
 .invite-box label {
-  color: rgb(245 234 210 / 72%);
+  color: rgb(var(--tone-ink) / 72%);
   font-size: 0.88rem;
   font-weight: 800;
 }
@@ -150,10 +224,10 @@ input,
 textarea {
   width: 100%;
   min-height: 44px;
-  border: 1px solid rgb(245 234 210 / 22%);
+  border: 1px solid rgb(var(--tone-ink) / 22%);
   border-radius: 6px;
-  color: #f5ead2;
-  background: rgb(255 255 255 / 7%);
+  color: rgb(var(--tone-ink));
+  background: rgb(var(--tone-white) / 7%);
   padding: 0 13px;
 }
 
@@ -165,12 +239,12 @@ textarea {
 
 .form-error {
   margin: 0;
-  color: #ffb59f;
+  color: var(--c-error);
 }
 
 .table-code {
   margin: 0;
-  color: #d8aa47;
+  color: rgb(var(--tone-highlight));
   overflow-wrap: anywhere;
 }
 
@@ -181,10 +255,10 @@ textarea {
 }
 
 .table-layout--your-turn .felt-panel {
-  border-color: #fce6a1;
+  border-color: rgb(var(--tone-highlight));
   box-shadow:
-    inset 0 0 0 2px rgb(252 230 161 / 34%),
-    0 0 0 4px rgb(252 230 161 / 12%);
+    inset var(--tone-shadow) 2px rgb(var(--tone-highlight) / 34%),
+    var(--tone-shadow) 4px rgb(var(--tone-highlight) / 12%);
 }
 
 .table-summary {
@@ -208,8 +282,8 @@ textarea {
 }
 
 .invite-box input {
-  color: #1d211b;
-  background: #f5ead2;
+  color: rgb(var(--tone-onaccent));
+  background: rgb(var(--tone-paper));
 }
 
 .table-metrics {
@@ -218,8 +292,8 @@ textarea {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
   margin: 8px 0 0;
-  border: 1px solid rgb(245 234 210 / 18%);
-  background: rgb(245 234 210 / 18%);
+  border: 1px solid rgb(var(--tone-ink) / 18%);
+  background: rgb(var(--tone-ink) / 18%);
 }
 
 .mobile-tabs {
@@ -237,11 +311,11 @@ textarea {
 .table-metrics div {
   min-width: 0;
   padding: 14px;
-  background: rgb(13 43 39 / 96%);
+  background: rgb(var(--tone-panel) / 96%);
 }
 
 dt {
-  color: rgb(245 234 210 / 58%);
+  color: rgb(var(--tone-ink) / 58%);
   font-size: 0.76rem;
   font-weight: 800;
 }
@@ -258,11 +332,11 @@ dd {
   gap: 18px;
   min-height: 260px;
   padding: clamp(18px, 3vw, 28px);
-  border: 1px solid rgb(216 170 71 / 24%);
+  border: 1px solid rgb(var(--tone-gold) / 24%);
   border-radius: 8px;
   background:
-    radial-gradient(circle at 50% 25%, rgb(216 170 71 / 14%), transparent 34%),
-    linear-gradient(160deg, rgb(11 68 55 / 92%), rgb(8 29 30 / 96%));
+    radial-gradient(circle at 50% 25%, rgb(var(--tone-gold) / 14%), transparent 34%),
+    linear-gradient(160deg, rgb(var(--tone-felt-hi) / 92%), rgb(var(--tone-felt-lo) / 96%));
 }
 
 .felt-panel__header,
@@ -284,10 +358,10 @@ dd {
 .action-bar > span,
 .seat__badges span,
 .latest-action span {
-  border: 1px solid rgb(245 234 210 / 18%);
+  border: 1px solid rgb(var(--tone-ink) / 18%);
   border-radius: 999px;
-  color: #f5ead2;
-  background: rgb(7 25 24 / 52%);
+  color: rgb(var(--tone-ink));
+  background: rgb(var(--tone-deep) / 52%);
   font-size: 0.78rem;
   font-weight: 900;
   line-height: 1;
@@ -295,7 +369,7 @@ dd {
 
 .pot-chip {
   padding: 10px 13px;
-  color: #fce6a1;
+  color: rgb(var(--tone-highlight));
 }
 
 .board-row,
@@ -316,10 +390,10 @@ dd {
   min-height: 74px;
   align-items: center;
   justify-content: center;
-  border: 1px dashed rgb(245 234 210 / 28%);
+  border: 1px dashed rgb(var(--tone-ink) / 28%);
   border-radius: 6px;
-  color: rgb(245 234 210 / 62%);
-  background: rgb(7 25 24 / 32%);
+  color: rgb(var(--tone-ink) / 62%);
+  background: rgb(var(--tone-deep) / 32%);
   font-weight: 900;
 }
 
@@ -339,15 +413,15 @@ dd {
   width: 92px;
   height: 128px;
   overflow: hidden;
-  border: 1px solid rgb(29 33 27 / 22%);
+  border: 1px solid rgb(var(--tone-onaccent) / 22%);
   border-radius: 7px;
-  color: #1d211b;
+  color: rgb(var(--tone-onaccent));
   background:
-    linear-gradient(145deg, rgb(255 255 255 / 78%), transparent 42%),
-    #fff8e8;
+    linear-gradient(145deg, rgb(var(--tone-white) / 78%), transparent 42%),
+    rgb(var(--tone-paper));
   box-shadow:
-    inset 0 0 0 2px rgb(255 255 255 / 68%),
-    0 8px 18px rgb(0 0 0 / 22%);
+    inset var(--tone-shadow) 2px rgb(var(--tone-white) / 68%),
+    0 8px 18px rgb(var(--tone-shadow) / 22%);
 }
 
 .playing-card__corner {
@@ -464,8 +538,8 @@ dd {
   border: 1px solid currentcolor;
   border-radius: 999px;
   background:
-    linear-gradient(135deg, rgb(216 170 71 / 22%), transparent 54%),
-    rgb(255 249 235 / 72%);
+    linear-gradient(135deg, rgb(var(--tone-gold) / 22%), transparent 54%),
+    rgb(var(--tone-paper) / 72%);
 }
 
 .playing-card__face span {
@@ -486,15 +560,15 @@ dd {
 
 .playing-card--hearts,
 .playing-card--diamonds {
-  color: #9c2d2d;
+  color: var(--c-suit-red);
 }
 
 .hole-card-tray {
   padding: 14px;
-  border: 1px solid rgb(245 234 210 / 14%);
+  border: 1px solid rgb(var(--tone-ink) / 14%);
   border-radius: 8px;
-  background: rgb(7 25 24 / 42%);
-  color: rgb(245 234 210 / 70%);
+  background: rgb(var(--tone-deep) / 42%);
+  color: rgb(var(--tone-ink) / 70%);
   font-weight: 900;
 }
 
@@ -505,10 +579,10 @@ dd {
   min-height: 42px;
   margin: 0;
   padding: 10px 12px;
-  border: 1px solid rgb(245 234 210 / 14%);
+  border: 1px solid rgb(var(--tone-ink) / 14%);
   border-radius: 8px;
-  color: rgb(245 234 210 / 76%);
-  background: rgb(7 25 24 / 34%);
+  color: rgb(var(--tone-ink) / 76%);
+  background: rgb(var(--tone-deep) / 34%);
   font-weight: 800;
   overflow-wrap: anywhere;
 }
@@ -516,7 +590,7 @@ dd {
 .latest-action span {
   flex: 0 0 auto;
   padding: 7px 9px;
-  color: #fce6a1;
+  color: rgb(var(--tone-highlight));
 }
 
 .action-bar {
@@ -525,7 +599,7 @@ dd {
   gap: 12px;
   align-items: end;
   min-height: 44px;
-  color: rgb(245 234 210 / 68%);
+  color: rgb(var(--tone-ink) / 68%);
   font-weight: 900;
 }
 
@@ -542,7 +616,7 @@ dd {
 }
 
 .raise-control label {
-  color: rgb(245 234 210 / 70%);
+  color: rgb(var(--tone-ink) / 70%);
   font-size: 0.84rem;
 }
 
@@ -567,20 +641,20 @@ dd {
   align-content: space-between;
   gap: 10px;
   padding: 16px;
-  border: 1px solid rgb(245 234 210 / 16%);
+  border: 1px solid rgb(var(--tone-ink) / 16%);
   border-radius: 8px;
-  background: rgb(18 54 47 / 72%);
+  background: rgb(var(--tone-felt) / 72%);
 }
 
 .seat--acting {
-  border-color: rgb(216 170 71 / 74%);
-  box-shadow: inset 0 0 0 1px rgb(216 170 71 / 32%);
+  border-color: rgb(var(--tone-gold) / 74%);
+  box-shadow: inset var(--tone-shadow) 1px rgb(var(--tone-gold) / 32%);
 }
 
 .seat__number,
 .seat span:last-child,
 .rail-panel li span {
-  color: rgb(245 234 210 / 62%);
+  color: rgb(var(--tone-ink) / 62%);
   font-size: 0.82rem;
   font-weight: 800;
 }
@@ -595,7 +669,7 @@ dd {
 }
 
 .seat__title span {
-  color: #fce6a1;
+  color: rgb(var(--tone-highlight));
   font-weight: 900;
 }
 
@@ -634,7 +708,7 @@ dd {
 
 .action-log h3 {
   margin: 0 0 10px;
-  color: #fce6a1;
+  color: rgb(var(--tone-highlight));
   font-size: 1rem;
 }
 
@@ -645,7 +719,7 @@ dd {
   padding-left: 20px;
   margin: 0;
   overflow: auto;
-  color: rgb(245 234 210 / 72%);
+  color: rgb(var(--tone-ink) / 72%);
 }
 
 .rail-panel {
@@ -663,7 +737,7 @@ dd {
 .rail-panel__section + .rail-panel__section {
   margin-top: 22px;
   padding-top: 18px;
-  border-top: 1px solid rgb(245 234 210 / 14%);
+  border-top: 1px solid rgb(var(--tone-ink) / 14%);
 }
 
 .rail-panel ul {
@@ -679,17 +753,17 @@ dd {
   justify-content: space-between;
   gap: 12px;
   padding: 11px 0;
-  border-bottom: 1px solid rgb(245 234 210 / 14%);
+  border-bottom: 1px solid rgb(var(--tone-ink) / 14%);
 }
 
 .rail-panel p {
-  color: rgb(245 234 210 / 68%);
+  color: rgb(var(--tone-ink) / 68%);
 }
 
 .spectator-list h3,
 .chat-panel h3 {
   margin: 18px 0 0;
-  color: #fce6a1;
+  color: rgb(var(--tone-highlight));
   font-size: 1rem;
 }
 
@@ -704,12 +778,12 @@ dd {
   gap: 16px;
   margin-top: 18px;
   padding-top: 16px;
-  border-top: 1px solid rgb(245 234 210 / 14%);
+  border-top: 1px solid rgb(var(--tone-ink) / 14%);
 }
 
 .host-controls h3 {
   margin: 0 0 10px;
-  color: #fce6a1;
+  color: rgb(var(--tone-highlight));
   font-size: 1rem;
 }
 
@@ -728,7 +802,7 @@ dd {
 .host-controls__row span {
   min-width: 0;
   overflow-wrap: anywhere;
-  color: rgb(245 234 210 / 72%);
+  color: rgb(var(--tone-ink) / 72%);
   font-weight: 800;
 }
 
@@ -752,9 +826,9 @@ dd {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 4px 10px;
   padding: 10px;
-  border: 1px solid rgb(245 234 210 / 14%);
+  border: 1px solid rgb(var(--tone-ink) / 14%);
   border-radius: 6px;
-  background: rgb(7 25 24 / 42%);
+  background: rgb(var(--tone-deep) / 42%);
 }
 
 .chat-messages strong {
@@ -763,7 +837,7 @@ dd {
 }
 
 .chat-messages span {
-  color: rgb(245 234 210 / 58%);
+  color: rgb(var(--tone-ink) / 58%);
   font-size: 0.76rem;
   font-weight: 800;
 }
@@ -775,7 +849,7 @@ dd {
 }
 
 .chat-messages__empty {
-  color: rgb(245 234 210 / 68%);
+  color: rgb(var(--tone-ink) / 68%);
 }
 
 .chat-form {
@@ -784,7 +858,7 @@ dd {
 }
 
 .chat-form label {
-  color: rgb(245 234 210 / 72%);
+  color: rgb(var(--tone-ink) / 72%);
   font-size: 0.88rem;
   font-weight: 800;
 }
@@ -796,7 +870,7 @@ dd {
 
 .players-panel h3 {
   margin: 0;
-  color: #fce6a1;
+  color: rgb(var(--tone-highlight));
   font-size: 1rem;
 }
 
@@ -812,7 +886,7 @@ dd {
   display: grid;
   align-items: end;
   padding: 14px;
-  background: rgb(3 10 10 / 64%);
+  background: rgb(var(--tone-scrim) / 64%);
 }
 
 .raise-sheet__panel {
@@ -823,10 +897,10 @@ dd {
   margin: 0 auto;
   overflow: auto;
   padding: 18px;
-  border: 1px solid rgb(245 234 210 / 22%);
+  border: 1px solid rgb(var(--tone-ink) / 22%);
   border-radius: 8px;
-  background: #0d2b27;
-  box-shadow: 0 -22px 70px rgb(0 0 0 / 42%);
+  background: rgb(var(--tone-panel));
+  box-shadow: 0 -22px 70px rgb(var(--tone-shadow) / 42%);
 }
 
 .raise-sheet__header {
@@ -837,8 +911,8 @@ dd {
 }
 
 .button-secondary {
-  color: #f5ead2;
-  background: rgb(7 25 24 / 66%);
+  color: rgb(var(--tone-ink));
+  background: rgb(var(--tone-deep) / 66%);
 }
 
 .raise-sheet__metrics {
@@ -846,14 +920,14 @@ dd {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
   margin: 0;
-  border: 1px solid rgb(245 234 210 / 16%);
-  background: rgb(245 234 210 / 16%);
+  border: 1px solid rgb(var(--tone-ink) / 16%);
+  background: rgb(var(--tone-ink) / 16%);
 }
 
 .raise-sheet__metrics div {
   min-width: 0;
   padding: 12px;
-  background: rgb(13 43 39 / 96%);
+  background: rgb(var(--tone-panel) / 96%);
 }
 
 .raise-presets {
@@ -865,14 +939,14 @@ dd {
 .raise-exact {
   display: grid;
   gap: 8px;
-  color: rgb(245 234 210 / 72%);
+  color: rgb(var(--tone-ink) / 72%);
   font-size: 0.88rem;
   font-weight: 800;
 }
 
 .raise-sheet__hint {
   margin: 0;
-  color: rgb(245 234 210 / 64%);
+  color: rgb(var(--tone-ink) / 64%);
   font-size: 0.88rem;
 }
 
@@ -883,17 +957,17 @@ dd {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgb(3 10 10 / 72%);
+  background: rgb(var(--tone-scrim) / 72%);
 }
 
 .tutorial-dialog__panel {
   width: min(680px, 100%);
   max-height: min(720px, 90vh);
   overflow: auto;
-  border: 1px solid rgb(245 234 210 / 22%);
+  border: 1px solid rgb(var(--tone-ink) / 22%);
   border-radius: 8px;
-  background: #0d2b27;
-  box-shadow: 0 28px 90px rgb(0 0 0 / 42%);
+  background: rgb(var(--tone-panel));
+  box-shadow: 0 28px 90px rgb(var(--tone-shadow) / 42%);
 }
 
 .tutorial-dialog__header {
@@ -904,8 +978,8 @@ dd {
   justify-content: space-between;
   gap: 16px;
   padding: 18px;
-  border-bottom: 1px solid rgb(245 234 210 / 14%);
-  background: #0d2b27;
+  border-bottom: 1px solid rgb(var(--tone-ink) / 14%);
+  background: rgb(var(--tone-panel));
 }
 
 .tutorial-dialog ol {
@@ -913,7 +987,7 @@ dd {
   gap: 14px;
   padding: 20px 28px 26px 42px;
   margin: 0;
-  color: rgb(245 234 210 / 78%);
+  color: rgb(var(--tone-ink) / 78%);
 }
 
 @media (max-width: 800px) {
@@ -974,14 +1048,14 @@ dd {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1px;
-    border: 1px solid rgb(245 234 210 / 16%);
-    background: rgb(245 234 210 / 16%);
+    border: 1px solid rgb(var(--tone-ink) / 16%);
+    background: rgb(var(--tone-ink) / 16%);
   }
 
   .mobile-hand-status div {
     min-width: 0;
     padding: 10px;
-    background: rgb(13 43 39 / 96%);
+    background: rgb(var(--tone-panel) / 96%);
   }
 
   .mobile-hand-status div:last-child {
@@ -991,7 +1065,7 @@ dd {
   .mobile-hand-status span,
   .compact-seat__seat {
     display: block;
-    color: rgb(245 234 210 / 58%);
+    color: rgb(var(--tone-ink) / 58%);
     font-size: 0.72rem;
     font-weight: 900;
     text-transform: uppercase;
@@ -1000,7 +1074,7 @@ dd {
   .mobile-hand-status strong {
     display: block;
     margin-top: 4px;
-    color: #f5ead2;
+    color: rgb(var(--tone-ink));
     font-size: 1.04rem;
     overflow-wrap: anywhere;
   }
@@ -1014,14 +1088,14 @@ dd {
   .mobile-tabs button {
     min-width: 0;
     padding: 0 6px;
-    color: #f5ead2;
-    background: rgb(7 25 24 / 66%);
+    color: rgb(var(--tone-ink));
+    background: rgb(var(--tone-deep) / 66%);
     font-size: 0.84rem;
   }
 
   .mobile-tabs button[aria-pressed="true"] {
-    color: #1d211b;
-    background: #fce6a1;
+    color: rgb(var(--tone-onaccent));
+    background: rgb(var(--tone-gold));
   }
 
   .felt-panel {
@@ -1086,10 +1160,10 @@ dd {
     z-index: 10;
     grid-template-columns: 1fr;
     padding: 10px;
-    border: 1px solid rgb(245 234 210 / 18%);
+    border: 1px solid rgb(var(--tone-ink) / 18%);
     border-radius: 8px;
-    background: rgb(7 25 24 / 94%);
-    box-shadow: 0 16px 36px rgb(0 0 0 / 34%);
+    background: rgb(var(--tone-deep) / 94%);
+    box-shadow: 0 16px 36px rgb(var(--tone-shadow) / 34%);
   }
 
   .latest-action {
@@ -1113,24 +1187,24 @@ dd {
     gap: 5px;
     min-height: 116px;
     padding: 10px;
-    border: 1px solid rgb(245 234 210 / 16%);
+    border: 1px solid rgb(var(--tone-ink) / 16%);
     border-radius: 8px;
-    background: rgb(18 54 47 / 72%);
+    background: rgb(var(--tone-felt) / 72%);
   }
 
   .compact-seat--acting {
-    border-color: rgb(216 170 71 / 76%);
-    box-shadow: inset 0 0 0 1px rgb(216 170 71 / 32%);
+    border-color: rgb(var(--tone-gold) / 76%);
+    box-shadow: inset var(--tone-shadow) 1px rgb(var(--tone-gold) / 32%);
   }
 
   .compact-seat strong {
     min-width: 0;
-    color: #f5ead2;
+    color: rgb(var(--tone-ink));
     overflow-wrap: anywhere;
   }
 
   .compact-seat > span:not(.compact-seat__seat) {
-    color: rgb(245 234 210 / 70%);
+    color: rgb(var(--tone-ink) / 70%);
     font-size: 0.82rem;
     font-weight: 800;
   }
@@ -1143,10 +1217,10 @@ dd {
 
   .compact-seat div span {
     padding: 4px 6px;
-    border: 1px solid rgb(245 234 210 / 18%);
+    border: 1px solid rgb(var(--tone-ink) / 18%);
     border-radius: 999px;
-    color: #fce6a1;
-    background: rgb(7 25 24 / 52%);
+    color: rgb(var(--tone-highlight));
+    background: rgb(var(--tone-deep) / 52%);
     font-size: 0.68rem;
     font-weight: 900;
   }
