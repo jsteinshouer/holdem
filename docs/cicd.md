@@ -94,16 +94,24 @@ image and complete. Subsequent deploys need no further action.
 ## Manual-approval gate
 
 CD deploys are gated behind the **`production`** GitHub Environment (required
-reviewer). On each run the `build` job builds and pushes the image, then the
-`deploy` job **pauses until a reviewer approves** it in the run's page (or the
-repo's Environments UI). This is wired up as:
+reviewer). On each run the `build` job builds and pushes the image, then a small
+`approval` job **pauses until a reviewer approves** it (in the run's page or the
+repo's Environments UI); only then does `deploy` run.
 
-- a `production` environment with a required reviewer (repo **Settings →
-  Environments → production**);
-- `environment: production` on the `deploy` job in `cd.yml`;
-- a dedicated Azure AD federated credential (`github-env` in the Pulumi program)
-  with subject `<sub_claim_prefix>:environment:production`, because a job bound to
-  an environment presents `...:environment:<name>` instead of `...:ref:...`.
+The environment is bound to the standalone `approval` job rather than to
+`deploy`. That's deliberate: a job bound to an environment presents an OIDC
+subject of `...:environment:<name>` instead of `...:ref:refs/heads/main`, which
+would require a second Azure federated credential. Keeping the gate on a separate
+job lets `deploy` keep the `...:ref:...` subject and reuse the existing
+credential — so the approval gate is pure GitHub config, no Azure change.
+
+Set up (already done):
+
+- `production` environment with a required reviewer, created via
+  `gh api --method PUT /repos/<owner>/<repo>/environments/production` (or repo
+  **Settings → Environments**).
+- an `approval` job in `cd.yml` with `environment: production` that `deploy`
+  depends on.
 
 To change reviewers, wait timer, or allowed branches, edit the environment under
 **Settings → Environments**.
