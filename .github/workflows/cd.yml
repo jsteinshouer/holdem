@@ -63,9 +63,24 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # Manual-approval gate. Binding a job to the `production` environment makes it
+  # pause until a required reviewer approves. We keep this on a standalone job
+  # (rather than on `deploy`) so the deploy job's OIDC subject stays
+  # ...:ref:refs/heads/main and reuses the existing Azure federated credential —
+  # a job bound to an environment would instead present ...:environment:production.
+  approval:
+    name: Await deploy approval
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://friendly-holdem.bravesmoke-9c27d4cf.centralus.azurecontainerapps.io
+    steps:
+      - run: echo "Deployment to production approved."
+
   deploy:
     name: Deploy, smoke test & promote
-    needs: build
+    needs: [build, approval]
     runs-on: ubuntu-latest
     env:
       RG: ${{ vars.AZURE_RESOURCE_GROUP }}

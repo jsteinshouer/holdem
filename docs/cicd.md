@@ -91,12 +91,30 @@ image and complete. Subsequent deploys need no further action.
 - Watch runs under the repo's **Actions** tab. The CD run logs the new revision
   URL and prints whether it promoted or rolled back.
 
-## Optional: gate CD behind an approval
+## Manual-approval gate
 
-To require a manual approval before deploys, create a GitHub **Environment** (e.g.
-`production`) with required reviewers, set `environment: production` on the
-`deploy` job in `cd.yml`, and add a second OIDC federated credential on the Azure
-AD app with subject `repo:<owner>/<repo>:environment:production`.
+CD deploys are gated behind the **`production`** GitHub Environment (required
+reviewer). On each run the `build` job builds and pushes the image, then a small
+`approval` job **pauses until a reviewer approves** it (in the run's page or the
+repo's Environments UI); only then does `deploy` run.
+
+The environment is bound to the standalone `approval` job rather than to
+`deploy`. That's deliberate: a job bound to an environment presents an OIDC
+subject of `...:environment:<name>` instead of `...:ref:refs/heads/main`, which
+would require a second Azure federated credential. Keeping the gate on a separate
+job lets `deploy` keep the `...:ref:...` subject and reuse the existing
+credential — so the approval gate is pure GitHub config, no Azure change.
+
+Set up (already done):
+
+- `production` environment with a required reviewer, created via
+  `gh api --method PUT /repos/<owner>/<repo>/environments/production` (or repo
+  **Settings → Environments**).
+- an `approval` job in `cd.yml` with `environment: production` that `deploy`
+  depends on.
+
+To change reviewers, wait timer, or allowed branches, edit the environment under
+**Settings → Environments**.
 
 ## Tear down
 
