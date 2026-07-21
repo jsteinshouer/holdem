@@ -11,7 +11,7 @@ description: >-
 config:
   friendly-holdem-infra:location:
     description: Azure region for all resources.
-    default: eastus
+    default: centralus
   friendly-holdem-infra:namePrefix:
     description: Prefix for resource names (RG, environment, container app).
     default: friendly-holdem

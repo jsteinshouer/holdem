@@ -1,5 +1,5 @@
 config:
-  friendly-holdem-infra:location: eastus
+  friendly-holdem-infra:location: centralus
   friendly-holdem-infra:namePrefix: friendly-holdem
   friendly-holdem-infra:githubRepo: jsteinshouer/holdem
   friendly-holdem-infra:githubBranch: main
