@@ -14,9 +14,9 @@ This is a single-context repo with root domain docs and root ADRs. See `docs/age
 
 ## Agent Routing
 
-For betting rules, hand lifecycle, pot/side-pot logic, legal actions, turn order, showdown, or active table state, follow `docs/agents/texas-holdem/game-logic-agent.md`.
+For betting rules, hand lifecycle, pot/side-pot logic, legal actions, turn order, showdown, or active table state, follow `docs/agents/texas-holdem-game-logic-agent.md`.
 
-Before marking an issue complete, or when asked to review TexasHoldem work, follow `docs/agents/texas-holdem/reviewer-agent.md`.
+Before marking an issue complete, or when asked to review TexasHoldem work, follow `docs/agents/texas-holdem-reviewer-agent.md`.
 
 For game-logic changes, tests are required unless the agent clearly explains why no test can be added. See `docs/testing.md` for the testing strategy, coverage expectations, and how to run each suite.
 

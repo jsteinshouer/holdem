@@ -1,6 +1,6 @@
-import { createServer, type ServerResponse } from "node:http";
-import { createReadStream, existsSync, statSync } from "node:fs";
-import { extname, join, normalize, resolve, sep } from "node:path";
+import { createServer } from "node:http";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Server } from "socket.io";
 import { createActiveTablePersistence } from "./activeTablePersistence.js";
@@ -8,14 +8,28 @@ import { loadConfig } from "./config.js";
 import { createLogger } from "./logger.js";
 import { createTableStore } from "./tableStore.js";
 import { createRealtimeServer } from "./realtime.js";
+import { createStaticFileHandler } from "./staticFileHandler.js";
 
 const config = loadConfig();
 const logger = createLogger("friendly-holdem-server");
+
+// Last-resort safety net: a bug that escapes a request handler or a rejected
+// promise must not silently take down the single always-on server for everyone.
+// Log it and stay up; per-request errors are already handled where they occur.
+process.on("uncaughtException", (error) => {
+  logger.error("uncaught exception", { error: error instanceof Error ? error.stack ?? error.message : String(error) });
+});
+process.on("unhandledRejection", (reason) => {
+  logger.error("unhandled rejection", {
+    reason: reason instanceof Error ? reason.stack ?? reason.message : String(reason)
+  });
+});
 const activeTablePersistence = createActiveTablePersistence(config.activeTablePersistence, logger);
 const expiredActiveTableIds = activeTablePersistence?.deleteExpiredTables(Date.now()) ?? [];
 const tableStore = createTableStore(config.defaults, config.clientOrigin, Date.now, activeTablePersistence);
 const staticClientDir = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../client/dist");
 const staticClientAvailable = existsSync(join(staticClientDir, "index.html"));
+const staticFileHandler = createStaticFileHandler({ staticClientDir });
 const httpServer = createServer((request, response) => {
   if (request.url?.startsWith("/socket.io/")) {
     return;
@@ -27,7 +41,7 @@ const httpServer = createServer((request, response) => {
     return;
   }
 
-  serveStaticClient(request.url ?? "/", response);
+  staticFileHandler.serveStaticClient(request.url ?? "/", response);
 });
 
 const io = new Server(httpServer, {
@@ -63,41 +77,3 @@ httpServer.listen(config.port, () => {
     expiredActiveTableCount: expiredActiveTableIds.length
   });
 });
-
-function serveStaticClient(requestUrl: string, response: ServerResponse): void {
-  const pathname = new URL(requestUrl, "http://localhost").pathname;
-  const requestedPath = pathname === "/" ? "index.html" : decodeURIComponent(pathname).replace(/^\/+/, "");
-  const filePath = safeStaticPath(requestedPath);
-  const existingFilePath = filePath && isFile(filePath) ? filePath : join(staticClientDir, "index.html");
-
-  response.writeHead(200, { "content-type": contentTypeFor(existingFilePath) });
-  createReadStream(existingFilePath).pipe(response);
-}
-
-function safeStaticPath(pathname: string): string | null {
-  const filePath = resolve(staticClientDir, normalize(pathname));
-
-  return filePath.startsWith(`${staticClientDir}${sep}`) ? filePath : null;
-}
-
-function isFile(filePath: string): boolean {
-  try {
-    return statSync(filePath).isFile();
-  } catch {
-    return false;
-  }
-}
-
-function contentTypeFor(filePath: string): string {
-  const contentTypes: Record<string, string> = {
-    ".css": "text/css; charset=utf-8",
-    ".html": "text/html; charset=utf-8",
-    ".js": "text/javascript; charset=utf-8",
-    ".json": "application/json; charset=utf-8",
-    ".png": "image/png",
-    ".svg": "image/svg+xml; charset=utf-8",
-    ".webmanifest": "application/manifest+json; charset=utf-8"
-  };
-
-  return contentTypes[extname(filePath)] ?? "application/octet-stream";
-}

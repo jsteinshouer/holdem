@@ -642,6 +642,126 @@ describe("table store", () => {
     expect(response.snapshot.seats[1]?.player?.stack).toBe(0);
   });
 
+  it("auto-runs the board when a heads-up small blind is all-in from posting the blind", () => {
+    // Regression for docs/tech-debt-report.md P0 item 1 (issue 01).
+    // Heads-up, the button is also the small blind and acts first preflop. When the
+    // button/small-blind stack is at or below the small blind, posting the blind
+    // drives that player all-in, yet the first-to-act selection still lands on the
+    // all-in seat. No action can then advance the hand (the all-in player is rejected,
+    // the big blind is "not your turn", and auto-act/bot/host-auto-fold all bail), so
+    // the table deadlocks with no recovery. Correct behavior: the hand runs the board
+    // out and settles.
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    const grace = store.joinTable(host.snapshot.tableId, "Grace");
+    const privateTable = store.getTable(host.snapshot.tableId);
+
+    // Host is the heads-up button/small blind and can only post an all-in small blind;
+    // Grace covers it with a full stack.
+    privateTable!.participants.get(host.snapshot.viewerParticipantId)!.stack = 3;
+    privateTable!.participants.get(grace.snapshot.viewerParticipantId)!.stack = 1000;
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    const snapshot = store.snapshotFor(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    // The hand must not stall with an all-in player stuck as the current actor.
+    expect(snapshot.hand.phase).toBe("settled");
+    expect(snapshot.hand.currentActorSeat).toBeNull();
+    expect(snapshot.hand.board).toHaveLength(5);
+  });
+
+  it("still gives a live small blind its turn when the big blind is all-in for more than the blind", () => {
+    // Adjacent to the run-out fix: only one player can voluntarily act, but that player
+    // still owes a call, so the hand must NOT auto-settle — the small blind must be able
+    // to call or fold rather than being run out without consent.
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    const grace = store.joinTable(host.snapshot.tableId, "Grace");
+    const privateTable = store.getTable(host.snapshot.tableId);
+
+    // Host is the heads-up button/small blind with a full stack; Grace's big blind is
+    // all-in for 8, above the small blind, so Host still owes a call.
+    privateTable!.participants.get(host.snapshot.viewerParticipantId)!.stack = 1000;
+    privateTable!.participants.get(grace.snapshot.viewerParticipantId)!.stack = 8;
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    const snapshot = store.snapshotFor(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(snapshot.hand.phase).toBe("preflop");
+    expect(snapshot.hand.currentActorId).toBe(host.snapshot.viewerParticipantId);
+    expect(snapshot.hand.legalActions).toContain("call");
+  });
+
+  it("still gives a live actor its turn when both blinds are all-in but a third player can act", () => {
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    const grace = store.joinTable(host.snapshot.tableId, "Grace");
+    const linus = store.joinTable(host.snapshot.tableId, "Linus");
+    const privateTable = store.getTable(host.snapshot.tableId);
+
+    // Host is the button and first to act preflop; both blinds post all-in short, so Host
+    // still owes a call and must be given the action rather than being folded out.
+    privateTable!.participants.get(grace.snapshot.viewerParticipantId)!.stack = 3;
+    privateTable!.participants.get(linus.snapshot.viewerParticipantId)!.stack = 4;
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    const snapshot = store.snapshotFor(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(snapshot.hand.phase).toBe("preflop");
+    expect(snapshot.hand.currentActorId).toBe(host.snapshot.viewerParticipantId);
+    expect(snapshot.hand.legalActions).toContain("call");
+  });
+
+  it("runs out the board when both heads-up blinds are all-in from posting", () => {
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    const grace = store.joinTable(host.snapshot.tableId, "Grace");
+    const privateTable = store.getTable(host.snapshot.tableId);
+
+    privateTable!.participants.get(host.snapshot.viewerParticipantId)!.stack = 3;
+    privateTable!.participants.get(grace.snapshot.viewerParticipantId)!.stack = 4;
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    const snapshot = store.snapshotFor(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(snapshot.hand.phase).toBe("settled");
+    expect(snapshot.hand.board).toHaveLength(5);
+    // Chips are conserved across the settled hand (7 total in play).
+    const total = (snapshot.seats[0]?.player?.stack ?? 0) + (snapshot.seats[1]?.player?.stack ?? 0);
+    expect(total).toBe(7);
+  });
+
+  it("recovers after a heads-up all-in-blind run-out so the next hand can be dealt", () => {
+    // Proves the table is unstuck end-to-end: the auto-run reaches settlement and the
+    // host can deal the next hand. In an all-in showdown a player may bust; rebuying any
+    // busted seat (the existing between-hands host flow) restores two funded players, so
+    // recovery holds regardless of which player wins the random run-out. We assert only
+    // that a second hand is dealt — it may itself immediately run out if the winner is
+    // left short-stacked, which is correct behavior, so its phase is not asserted.
+    const store = createTableStore(defaults);
+    const host = store.createTable("Host");
+    const grace = store.joinTable(host.snapshot.tableId, "Grace");
+    const privateTable = store.getTable(host.snapshot.tableId);
+
+    privateTable!.participants.get(host.snapshot.viewerParticipantId)!.stack = 3;
+    privateTable!.participants.get(grace.snapshot.viewerParticipantId)!.stack = 4;
+
+    store.startHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+    const settled = store.snapshotFor(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(settled.hand.phase).toBe("settled");
+
+    for (const seat of settled.seats) {
+      if (seat.player && seat.player.stack === 0) {
+        store.approveRebuy(host.snapshot.tableId, host.snapshot.viewerParticipantId, seat.player.id);
+      }
+    }
+
+    const next = store.dealNextHand(host.snapshot.tableId, host.snapshot.viewerParticipantId);
+
+    expect(next.snapshot.hand.handNumber).toBe(2);
+  });
+
   it("keeps a disconnected all-in player eligible for pots", () => {
     const store = createTableStore({ ...defaults, startingStack: 20 });
     const host = store.createTable("Host");
