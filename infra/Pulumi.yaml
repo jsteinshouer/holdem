@@ -21,3 +21,9 @@ config:
   friendly-holdem-infra:githubBranch:
     description: Branch the CD workflow runs on (federated credential subject).
     default: main
+  friendly-holdem-infra:githubSubjectPrefix:
+    description: >-
+      OIDC "sub" claim prefix. Defaults to repo:<githubRepo>. Newer GitHub
+      accounts use an immutable prefix with numeric IDs
+      (repo:<owner>@<id>/<repo>@<id>); get the exact value with
+      `gh api /repos/<owner>/<repo>/actions/oidc/customization/sub --jq .sub_claim_prefix`.
