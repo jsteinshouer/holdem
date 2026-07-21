@@ -2,7 +2,7 @@ name: CD
 
 # Deploy pipeline: runs when a PR is merged into main (push to main), or manually.
 # Strategy is blue-green via Container Apps revisions:
-#   1. Build + push the image to ACR.
+#   1. Build + push the image to GHCR (the deployment artifact).
 #   2. Deploy a NEW revision that receives 0% traffic.
 #   3. Smoke-test that revision on its own URL.
 #   4. Only if the smoke test passes, shift 100% traffic to it (promote).
@@ -20,44 +20,48 @@ concurrency:
 permissions:
   id-token: write # required for Azure OIDC login
   contents: read
+  packages: write # required to push the image to GHCR
 
 jobs:
   build:
-    name: Build & push image (ACR)
+    name: Build & push image (GHCR)
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.image.outputs.image }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Azure login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      # az acr build runs the Docker build inside ACR (no local Docker needed)
-      # and pushes the resulting image. This is our deployment artifact.
-      - name: Build & push image with ACR Tasks
-        env:
-          ACR_NAME: ${{ vars.ACR_NAME }}
-          IMAGE_NAME: ${{ vars.IMAGE_NAME }}
-          SHA: ${{ github.sha }}
-        run: |
-          az acr build \
-            --registry "$ACR_NAME" \
-            --image "$IMAGE_NAME:$SHA" \
-            --image "$IMAGE_NAME:latest" \
-            --file Dockerfile .
-
-      - name: Export image reference
+      - name: Compute image reference
         id: image
-        env:
-          ACR_NAME: ${{ vars.ACR_NAME }}
-          IMAGE_NAME: ${{ vars.IMAGE_NAME }}
-          SHA: ${{ github.sha }}
-        run: echo "image=${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${SHA}" >> "$GITHUB_OUTPUT"
+        run: |
+          REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/${REPO}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "repo=ghcr.io/${REPO}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Builds the Dockerfile and pushes the image to GHCR. This is our
+      # deployment artifact. The package must be set to PUBLIC once (see
+      # docs/cicd.md) so Container Apps can pull it anonymously.
+      - name: Build & push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ steps.image.outputs.repo }}:${{ github.sha }}
+            ${{ steps.image.outputs.repo }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy:
     name: Deploy, smoke test & promote
@@ -95,15 +99,8 @@ jobs:
             exit 1
           }
 
-      # The infra bootstrap grants the app's managed identity AcrPull but leaves
-      # registry auth to the pipeline. This is idempotent.
-      - name: Ensure ACR pull via managed identity
-        env:
-          ACR_NAME: ${{ vars.ACR_NAME }}
-        run: |
-          az containerapp registry set -n "$APP" -g "$RG" \
-            --server "${ACR_NAME}.azurecr.io" --identity system
-
+      # The image lives in a public GHCR package, so Container Apps pulls it
+      # anonymously — no registry credentials to configure.
       - name: Enable multiple-revision mode
         run: az containerapp revision set-mode -n "$APP" -g "$RG" --mode multiple
 

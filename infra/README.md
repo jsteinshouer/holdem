@@ -7,15 +7,17 @@ CI/CD pipeline deploys into. It replaces the manual `az` bootstrap in
 ## What it creates
 
 - **Resource group** — `<namePrefix>-rg`
-- **Azure Container Registry** (Basic) — holds the app image
 - **Container Apps environment** — `<namePrefix>-env`
 - **Container App** — `<namePrefix>`, external ingress on port 8080, scale 0→1,
-  system-assigned managed identity, running a throwaway placeholder image until
-  the CD pipeline deploys the real one
-- **AcrPull** role for the app's identity (so it can pull from ACR)
+  running a throwaway placeholder image until the CD pipeline deploys the real
+  one
 - **Azure AD app registration + service principal + federated credential** for
   GitHub Actions OIDC (trusts `repo:<githubRepo>:ref:refs/heads/<githubBranch>`)
 - **Contributor** role for that service principal, scoped to the resource group
+
+The image itself lives in **GHCR** (`ghcr.io/<owner>/<repo>`), not Azure — the
+CD pipeline builds and pushes it there, and the Container App pulls it from the
+public package. So there's no registry to provision here.
 
 The Container App's image, revisions, revision mode and traffic weights are left
 under the CD pipeline's control (Pulumi ignores changes to them), so
@@ -33,10 +35,9 @@ under the CD pipeline's control (Pulumi ignores changes to them), so
 cd infra
 npm install
 
-pulumi stack init dev            # first time only
+pulumi stack init prod           # first time only
 
-# Optional: override any default (acrName MUST be globally unique)
-pulumi config set friendly-holdem-infra:acrName <your-unique-acr-name>
+# Optional: override any default
 pulumi config set friendly-holdem-infra:githubRepo <owner>/<repo>
 
 pulumi up
@@ -60,13 +61,15 @@ gh secret set AZURE_CLIENT_ID       --body "$(pulumi stack output AZURE_CLIENT_I
 gh secret set AZURE_TENANT_ID       --body "$(pulumi stack output AZURE_TENANT_ID)"
 gh secret set AZURE_SUBSCRIPTION_ID --body "$(pulumi stack output AZURE_SUBSCRIPTION_ID)"
 
-gh variable set ACR_NAME              --body "$(pulumi stack output ACR_NAME)"
-gh variable set IMAGE_NAME            --body "$(pulumi stack output IMAGE_NAME)"
 gh variable set AZURE_RESOURCE_GROUP  --body "$(pulumi stack output AZURE_RESOURCE_GROUP)"
 gh variable set AZURE_CONTAINER_APP   --body "$(pulumi stack output AZURE_CONTAINER_APP)"
 ```
 
 Then merge to `main` (or run the CD workflow manually) to deploy the real image.
+On the **first** deploy the GHCR package is created private — set it to
+**public** once (GitHub → your profile → Packages → the package → Package
+settings → Change visibility → Public) so Container Apps can pull it. See
+[../docs/cicd.md](../docs/cicd.md).
 
 ## Tear down
 
