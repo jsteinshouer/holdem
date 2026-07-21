@@ -23,6 +23,10 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Workspace packages import @friendly-holdem/shared via its built dist
+      # (package.json main -> ./dist/index.js), so it must be compiled first.
+      - name: Build shared package
+        run: pnpm --filter @friendly-holdem/shared build
       - run: pnpm lint
 
   test-backend:
@@ -36,6 +40,10 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Workspace packages import @friendly-holdem/shared via its built dist
+      # (package.json main -> ./dist/index.js), so it must be compiled first.
+      - name: Build shared package
+        run: pnpm --filter @friendly-holdem/shared build
       - name: Run server + shared unit tests
         run: pnpm --filter @friendly-holdem/server --filter @friendly-holdem/shared test
 
@@ -50,6 +58,10 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Workspace packages import @friendly-holdem/shared via its built dist
+      # (package.json main -> ./dist/index.js), so it must be compiled first.
+      - name: Build shared package
+        run: pnpm --filter @friendly-holdem/shared build
       - name: Run client unit tests
         run: pnpm --filter @friendly-holdem/client test
 
@@ -64,6 +76,10 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Workspace packages import @friendly-holdem/shared via its built dist
+      # (package.json main -> ./dist/index.js), so it must be compiled first.
+      - name: Build shared package
+        run: pnpm --filter @friendly-holdem/shared build
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps
       # The server dev script reads --env-file=../../.env, which is gitignored.
