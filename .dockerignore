@@ -1,0 +1,23 @@
+# Reinstalled/rebuilt inside the image
+node_modules
+**/node_modules
+dist
+**/dist
+
+# Local env and secrets
+.env
+.env.*
+
+# Test + tooling artifacts
+test-results
+playwright-report
+sessions
+.scratch
+coverage
+**/*.log
+
+# VCS / editor
+.git
+.gitignore
+.vscode
+.idea
