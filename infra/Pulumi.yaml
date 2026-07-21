@@ -1,0 +1,29 @@
+name: friendly-holdem-infra
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+description: >-
+  One-time Azure infrastructure for Friendly Hold'em: resource group, ACR,
+  Container Apps environment + app (with managed identity), and the Azure AD
+  app registration + federated credential used by GitHub Actions OIDC.
+
+config:
+  friendly-holdem-infra:location:
+    description: Azure region for all resources.
+    default: eastus
+  friendly-holdem-infra:namePrefix:
+    description: Prefix for resource names (RG, environment, container app).
+    default: friendly-holdem
+  friendly-holdem-infra:acrName:
+    description: ACR name — must be globally unique, 5-50 alphanumeric chars.
+    default: friendlyholdemacr
+  friendly-holdem-infra:imageName:
+    description: Image repository name pushed to ACR by the CD pipeline.
+    default: friendly-holdem
+  friendly-holdem-infra:githubRepo:
+    description: "GitHub repo (owner/name) trusted by the OIDC federated credential."
+    default: jsteinshouer/holdem
+  friendly-holdem-infra:githubBranch:
+    description: Branch the CD workflow runs on (federated credential subject).
+    default: main

@@ -1,0 +1,9 @@
+config:
+  friendly-holdem-infra:location: eastus
+  friendly-holdem-infra:namePrefix: friendly-holdem
+  # ACR names must be globally unique — change this if `pulumi up` reports the
+  # name is taken.
+  friendly-holdem-infra:acrName: friendlyholdemacr
+  friendly-holdem-infra:imageName: friendly-holdem
+  friendly-holdem-infra:githubRepo: jsteinshouer/holdem
+  friendly-holdem-infra:githubBranch: main

@@ -91,9 +91,18 @@ jobs:
         run: |
           az containerapp show -n "$APP" -g "$RG" >/dev/null 2>&1 || {
             echo "::error::Container App '$APP' not found in resource group '$RG'."
-            echo "::error::Run the one-time bootstrap in docs/cicd.md before the first deploy."
+            echo "::error::Provision infra first — see infra/README.md (Pulumi) or docs/cicd.md."
             exit 1
           }
+
+      # The infra bootstrap grants the app's managed identity AcrPull but leaves
+      # registry auth to the pipeline. This is idempotent.
+      - name: Ensure ACR pull via managed identity
+        env:
+          ACR_NAME: ${{ vars.ACR_NAME }}
+        run: |
+          az containerapp registry set -n "$APP" -g "$RG" \
+            --server "${ACR_NAME}.azurecr.io" --identity system
 
       - name: Enable multiple-revision mode
         run: az containerapp revision set-mode -n "$APP" -g "$RG" --mode multiple

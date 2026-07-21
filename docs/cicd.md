@@ -19,8 +19,16 @@ Two GitHub Actions workflows:
 
 ## One-time setup
 
-You need the Azure resources to exist and GitHub to be able to authenticate. Do
-this once. Replace the placeholder values (`ACR_NAME` especially — it must be
+You need the Azure resources to exist and GitHub to be able to authenticate.
+
+> **Recommended: use the Pulumi project in [`../infra`](../infra/README.md).** It
+> provisions everything below (resource group, ACR, Container Apps environment +
+> app with managed identity + AcrPull, and the Azure AD app registration +
+> federated credential + Contributor role) and exports outputs that map straight
+> onto the GitHub secrets/variables. The manual `az` steps below are the
+> equivalent if you'd rather not use Pulumi.
+
+Do this once. Replace the placeholder values (`ACR_NAME` especially — it must be
 globally unique, 5–50 alphanumerics).
 
 Set some shell variables first:
