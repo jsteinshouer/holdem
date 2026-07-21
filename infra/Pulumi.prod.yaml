@@ -3,3 +3,4 @@ config:
   friendly-holdem-infra:namePrefix: friendly-holdem
   friendly-holdem-infra:githubRepo: jsteinshouer/holdem
   friendly-holdem-infra:githubBranch: main
+  friendly-holdem-infra:githubSubjectPrefix: repo:jsteinshouer@2914865/holdem@1307828236

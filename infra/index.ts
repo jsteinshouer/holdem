@@ -10,6 +10,11 @@ const location = config.get("location") ?? "eastus";
 const namePrefix = config.get("namePrefix") ?? "friendly-holdem";
 const githubRepo = config.get("githubRepo") ?? "jsteinshouer/holdem";
 const githubBranch = config.get("githubBranch") ?? "main";
+// GitHub's OIDC "sub" claim prefix. Newer accounts default to an immutable form
+// that embeds numeric owner/repo IDs (repo:<owner>@<id>/<repo>@<id>) rather than
+// the classic repo:<owner>/<repo>. Find the exact value for a repo with:
+//   gh api /repos/<owner>/<repo>/actions/oidc/customization/sub --jq .sub_claim_prefix
+const githubSubjectPrefix = config.get("githubSubjectPrefix") ?? `repo:${githubRepo}`;
 
 // Well-known built-in role definition GUID.
 const CONTRIBUTOR_ROLE_ID = "b24988ac-6180-42a0-ab88-20f7382dd24c";
@@ -88,7 +93,7 @@ new azuread.ApplicationFederatedIdentityCredential("github-main", {
   applicationId: adApp.id,
   displayName: "github-main",
   issuer: "https://token.actions.githubusercontent.com",
-  subject: `repo:${githubRepo}:ref:refs/heads/${githubBranch}`,
+  subject: `${githubSubjectPrefix}:ref:refs/heads/${githubBranch}`,
   audiences: ["api://AzureADTokenExchange"],
 });
 
