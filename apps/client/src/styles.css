@@ -20,6 +20,12 @@
   --c-error: #ffb59f;
   --c-connected: #bdf2c8;
 
+  /* Primary button fill. Dark theme keeps the gold identity; light theme
+     (below) swaps it for a neutral slate so buttons don't read as accents. */
+  --btn-bg: var(--tone-gold);
+  --btn-fg: var(--tone-onaccent);
+  --btn-border: var(--tone-gold);
+
   color: rgb(var(--tone-ink));
   background: rgb(var(--tone-felt));
   font-family:
@@ -50,6 +56,11 @@
   --c-suit-red: #b0342a;
   --c-error: #b23a2a;
   --c-connected: #1f7a45;
+
+  /* Neutral slate buttons with light text — no gold accent in light mode. */
+  --btn-bg: 74 86 79;
+  --btn-fg: 249 246 238;
+  --btn-border: 74 86 79;
 }
 
 * {
@@ -70,10 +81,10 @@ textarea {
 
 button {
   min-height: 44px;
-  border: 1px solid rgb(var(--tone-gold));
+  border: 1px solid rgb(var(--btn-border));
   border-radius: 6px;
-  color: rgb(var(--tone-onaccent));
-  background: rgb(var(--tone-gold));
+  color: rgb(var(--btn-fg));
+  background: rgb(var(--btn-bg));
   font-weight: 800;
   cursor: pointer;
 }
