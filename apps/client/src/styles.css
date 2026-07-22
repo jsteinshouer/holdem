@@ -193,12 +193,13 @@ h2 {
   line-height: 1;
 }
 
-/* Ease surfaces between themes instead of hard-cutting the palette. */
-.app-shell,
-.app-shell * {
+/* Ease the page-level palette between themes. Scoped to the shell background
+   and text (not every descendant) so gameplay state changes stay instant and
+   we don't pay a per-element transition cost on each re-render. */
+:root,
+.app-shell {
   transition:
     background-color 0.25s ease,
-    border-color 0.25s ease,
     color 0.25s ease;
 }
 

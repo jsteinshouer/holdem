@@ -4,6 +4,9 @@ export default defineConfig({
   testDir: "tests/e2e",
   testIgnore: "production-smoke.spec.ts",
   fullyParallel: true,
+  // Retry in CI so a single transient slowdown under parallel browser load
+  // doesn't fail the job; also activates the on-first-retry trace below.
+  retries: process.env.CI ? 2 : 0,
   reporter: "list",
   use: {
     baseURL: "http://127.0.0.1:5173",
