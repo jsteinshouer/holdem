@@ -33,8 +33,24 @@ import "./styles.css";
 
 const serverUrl = import.meta.env.VITE_SERVER_URL ?? window.location.origin;
 
+type Theme = "dark" | "light";
+
+const THEME_STORAGE_KEY = "friendly-holdem:theme";
+const THEME_COLORS: Record<Theme, string> = { dark: "#173f35", light: "#e2ece2" };
+
+function readStoredTheme(): Theme {
+  return window.localStorage.getItem(THEME_STORAGE_KEY) === "dark" ? "dark" : "light";
+}
 
 function App() {
+  const [theme, setTheme] = useState<Theme>(readStoredTheme);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", THEME_COLORS[theme]);
+  }, [theme]);
+
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [snapshot, setSnapshot] = useState<TableSnapshot | null>(null);
@@ -213,9 +229,21 @@ function App() {
             <p className="eyebrow">Private Hold'em Room</p>
             <h1 id="app-heading">Friendly Hold'em</h1>
           </div>
-          <span className={`status-pill status-pill--${connectionState}`}>
-            {connectionStatusLabel(connectionState)}
-          </span>
+          <div className="masthead-actions">
+            <button
+              className="theme-toggle"
+              type="button"
+              aria-pressed={theme === "light"}
+              aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+              title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+              onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+            >
+              {theme === "light" ? "🌙" : "☀️"}
+            </button>
+            <span className={`status-pill status-pill--${connectionState}`}>
+              {connectionStatusLabel(connectionState)}
+            </span>
+          </div>
         </header>
 
         {snapshot ? (

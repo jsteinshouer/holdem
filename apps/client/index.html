@@ -8,6 +8,17 @@
     <link rel="icon" href="/icons/friendly-holdem-icon-192.png" type="image/png" />
     <link rel="apple-touch-icon" href="/icons/friendly-holdem-icon-192.png" />
     <title>Friendly Hold'em</title>
+    <script>
+      // Apply the theme before first paint to avoid a flash of the wrong palette.
+      // Light is the default; only an explicit saved "dark" opts back into dark.
+      try {
+        if (localStorage.getItem("friendly-holdem:theme") !== "dark") {
+          document.documentElement.dataset.theme = "light";
+        }
+      } catch (error) {
+        document.documentElement.dataset.theme = "light";
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
