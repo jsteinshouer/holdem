@@ -39,7 +39,7 @@ const THEME_STORAGE_KEY = "friendly-holdem:theme";
 const THEME_COLORS: Record<Theme, string> = { dark: "#173f35", light: "#e2ece2" };
 
 function readStoredTheme(): Theme {
-  return window.localStorage.getItem(THEME_STORAGE_KEY) === "light" ? "light" : "dark";
+  return window.localStorage.getItem(THEME_STORAGE_KEY) === "dark" ? "dark" : "light";
 }
 
 function App() {
