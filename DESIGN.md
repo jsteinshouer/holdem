@@ -214,9 +214,13 @@ Scale is a 1.2 ratio: 0.75 / 0.875 / 1 / 1.125 / 1.5 / 2rem. Six steps, and no s
 
 ## Layout
 
-**The ring is the layout.** Seats are positioned on a single elliptical field by a per-seat angle custom property, and the ring is always rotated so the viewer sits at 6 o'clock with opponents arcing above in clockwise turn order. There is one seat component and one topology; a phone and a desktop render the same DOM.
+**The ring is the layout, until the arithmetic says otherwise.** Seats are positioned on a single elliptical field by a per-seat angle custom property, and the ring is rotated so the viewer sits at 6 o'clock with opponents arcing above in clockwise turn order. There is one seat component and one topology; a phone and a desktop render the same DOM.
 
-Reshaping is driven by **container queries on the table region**, not viewport media queries. The table adapts to its own box, so it behaves correctly in a phone, in a narrow desktop column, and in a test viewport, with no breakpoint cliff. Desktop widens the ellipse and places the rail as a column beside it; narrow widths compress the ellipse vertically and move the rail to a bottom sheet holding the same components.
+Below 620px the ellipse is abandoned for a grid. This is measured, not aesthetic: two 112px seat plates on a 387px felt leave 163px between them, which cannot hold a board and a pot, and six plates cannot ring an ellipse that small without colliding. The grid keeps everything the ring carried — opponents ordered clockwise from the viewer, the viewer at the foot, one component, one DOM — and drops only the curve.
+
+From 620px up, the ring and the centre keep **separate origins** (`--ring-cy` and `--centre-y`) so the top-centre seat can never land on the board, and the felt's aspect is chosen so the ring's vertical spacing exceeds the seat plate height.
+
+Reshaping is driven by **container queries on the table region**, not viewport media queries, so the table adapts to its own box and behaves correctly in a phone, in a narrow desktop column, and in a test viewport.
 
 **Four regions form a fixed mask. They never appear or disappear; only their proportions change.**
 
@@ -232,6 +236,8 @@ Container max width 1180px. Spacing is a 4px base scale (4 / 8 / 12 / 16 / 24 / 
 ### Named Rules
 
 **The One Tree Rule.** No element exists twice to serve two screen sizes. A component that has a `mobile-` twin toggled by `display: none` is a defect, not an adaptation. Where wide and narrow genuinely differ, the same component moves to a different container.
+
+**The Measured Geometry Rule.** Any layout that positions elements by computed coordinates is verified by reading back the rendered boxes at 390, 900 and 1440, not by looking at it. Zero overlaps, nothing outside its container, and no clipped money figure. A collision found by eye has already shipped once.
 
 **The One Place Rule.** A player's identity and their position are the same drawn object. There is no roster panel listing people who are already visible on the table.
 
@@ -279,7 +285,7 @@ Character: **printed and exact.** Hairline rules, tight registration, everything
 The bar carrying fold / check / call / raise / all-in. Each button states its consequence on a second line in Money type: `Call $20` over `$480 left`. This is the product's central teaching device and the clearest place it beats its craft bar. Buttons hold fixed slots so they do not reorder between streets.
 
 ### Seat Plate (signature)
-One component for all six seats and every state. A strict label template in fixed slot order — name, stack, state, last action — so six plates scan as aligned data rather than six small compositions. States: empty, seated-waiting, in-hand, folded (plate desaturates to 45% opacity), all-in (brass hairline plus an ALL IN label), sitting out, busted, disconnected (hairline goes dashed), bot (a small BOT label), and acting (turn lift plus a brass ring). Button, small blind and big blind ride as small brass discs on the plate edge.
+One component for all six seats and every state. A strict label template in fixed slot order — name, stack, bet, state — so six plates scan as aligned data rather than six small compositions. (The fourth slot is the live bet, not the last action: `SeatSnapshot` carries `currentBet` but no per-seat action history.) States: empty, seated-waiting, in-hand, folded (plate desaturates to 45% opacity), all-in (brass hairline plus an ALL IN label), sitting out, busted, disconnected (hairline goes dashed), bot (a small BOT label), and acting (turn lift plus a brass ring). Button, small blind and big blind ride as small brass discs on the plate edge.
 
 ### Playing Card (signature)
 92 × 128px, `paper` ground, 6px corner, one `paper-edge` hairline, rank and suit in Bitter at two opposing corners with a rotational-symmetric pip field between them. Suit red is `card-suit-red` in both themes. **No gradient, no drop shadow** — the incumbent card's sheen and lift are retired by the Flat-At-Rest Rule. The face-down back is `felt-700` with a `felt-900` hairline lattice.
@@ -300,7 +306,7 @@ A stack renders as circles in real denominations, tallest denomination on top, w
 - **Error:** hairline goes `state-error`, and the message sits below in Body — never as a color change alone.
 
 ### Navigation
-The rail's four sections (Log, Chat, Players, Manage) are tabs at narrow widths and stacked sections at wide. Tabs are Label type, uppercase, with the active tab carrying a 2px brass underline **and** `aria-selected`. Unread chat shows a count, not a dot.
+The rail's four sections (Log, Chat, Players, Manage) are tabs below 1000px and stacked sections above it, where a column beside the table has room for all four. Tabs are Label type, uppercase, with the active one carrying a 2px brass underline **and** `aria-pressed`. They are buttons, not an ARIA tablist: a tablist without roving tabindex and `tabpanel` roles is a worse lie than a plain button, and the roles would have to change with the breakpoint. Unread chat shows a count, not a dot.
 
 ## Do's and Don'ts
 
