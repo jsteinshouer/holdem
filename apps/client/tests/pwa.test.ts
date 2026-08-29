@@ -8,7 +8,7 @@ describe("PWA setup", () => {
     const html = await readFile(resolve("index.html"), "utf8");
 
     expect(html).toContain('<link rel="manifest" href="/manifest.webmanifest" />');
-    expect(html).toContain('<meta name="theme-color" content="#173f35" />');
+    expect(html).toContain('<meta name="theme-color" content="#F2EEE6" />');
   });
 
   it("declares app identity, theme color, and icons in the manifest", async () => {
@@ -21,7 +21,7 @@ describe("PWA setup", () => {
     };
 
     expect(manifest.name).toBe("Friendly Hold'em");
-    expect(manifest.theme_color).toBe("#173f35");
+    expect(manifest.theme_color).toBe("#F2EEE6");
     expect(manifest.icons).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -93,6 +93,7 @@ describe("PWA setup", () => {
     expect(serviceWorker).toContain('"/icons/friendly-holdem-icon-192.png"');
     expect(serviceWorker).toContain('"/screenshots/table-wide.png"');
     expect(serviceWorker).toContain('"/screenshots/table-mobile.png"');
+    expect(serviceWorker).toContain('"/fonts/bitter-latin.woff2"');
     expect(serviceWorker).toContain('url.pathname.startsWith("/socket.io/")');
     expect(serviceWorker).not.toContain("push");
     expect(serviceWorker).not.toContain("sync");

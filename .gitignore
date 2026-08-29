@@ -14,3 +14,8 @@ playwright-report/
 *.sqlite
 *.sqlite3
 .data/
+# Impeccable working state (session-local, not source)
+.impeccable/live/sessions/
+.impeccable/live/roots.json
+.impeccable/live/inject-journal.json
+.impeccable/questions/

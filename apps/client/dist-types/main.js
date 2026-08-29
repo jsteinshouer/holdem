@@ -1,12 +1,26 @@
-import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
-import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { io } from "socket.io-client";
 import { registerServiceWorker } from "./pwa";
-import { connectionStatusLabel, isCommandInputDisabled, isRaiseAmountInRange, raiseBounds, raisePresets } from "./tableView";
+import { connectionStatusLabel, isCommandInputDisabled } from "./tableView";
+import { TableRoom } from "./table/TableRoom";
+import { MoonIcon, SunIcon } from "./icons";
 import "./styles.css";
 const serverUrl = import.meta.env.VITE_SERVER_URL ?? window.location.origin;
+const THEME_STORAGE_KEY = "friendly-holdem:theme";
+// The room around the table is what flips; the felt and the cards barely move.
+const THEME_COLORS = { dark: "#0F1412", light: "#F2EEE6" };
+function readStoredTheme() {
+    return window.localStorage.getItem(THEME_STORAGE_KEY) === "dark" ? "dark" : "light";
+}
 function App() {
+    const [theme, setTheme] = useState(readStoredTheme);
+    useEffect(() => {
+        document.documentElement.dataset.theme = theme;
+        window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+        document.querySelector('meta[name="theme-color"]')?.setAttribute("content", THEME_COLORS[theme]);
+    }, [theme]);
     const [socket, setSocket] = useState(null);
     const [connectionState, setConnectionState] = useState("connecting");
     const [snapshot, setSnapshot] = useState(null);
@@ -14,10 +28,7 @@ function App() {
     const [error, setError] = useState(null);
     const tableIdFromUrl = getTableIdFromPath();
     useEffect(() => {
-        const nextSocket = io(serverUrl, {
-            autoConnect: true,
-            transports: ["websocket", "polling"]
-        });
+        const nextSocket = io(serverUrl, { autoConnect: true, transports: ["websocket", "polling"] });
         nextSocket.on("connect", () => setConnectionState("connected"));
         nextSocket.on("disconnect", () => setConnectionState("offline"));
         nextSocket.on("connect_error", () => setConnectionState("offline"));
@@ -86,9 +97,7 @@ function App() {
         }
         setError(null);
         try {
-            const response = await emitCommand(socket, "hand:start", {
-                tableId: snapshot.tableId
-            });
+            const response = await emitCommand(socket, "hand:start", { tableId: snapshot.tableId });
             handleSessionResponse(response);
         }
         catch (nextError) {
@@ -151,244 +160,19 @@ function App() {
         setDisplayName("");
         return response.snapshot;
     }
-    return (_jsx("main", { className: "app-shell", children: _jsxs("section", { className: "room-board", "aria-labelledby": "app-heading", children: [_jsxs("header", { className: "room-board__masthead", children: [_jsxs("div", { children: [_jsx("p", { className: "eyebrow", children: "Private Hold'em Room" }), _jsx("h1", { id: "app-heading", children: "Friendly Hold'em" })] }), _jsx("span", { className: `status-pill status-pill--${connectionState}`, children: connectionStatusLabel(connectionState) })] }), snapshot ? (_jsx(TableRoom, { error: error, inviteLink: inviteLink, snapshot: snapshot, onPlayerAction: playerAction, onSendChatMessage: sendChatMessage, onTableCommand: tableCommand, onStartHand: startHand })) : tableIdFromUrl ? (_jsx(JoinTablePanel, { displayName: displayName, error: error, isDisabled: isCommandInputDisabled(Boolean(socket), connectionState), tableId: tableIdFromUrl, onDisplayNameChange: setDisplayName, onJoin: joinTable })) : (_jsx(CreateTablePanel, { displayName: displayName, error: error, isDisabled: isCommandInputDisabled(Boolean(socket), connectionState), onDisplayNameChange: setDisplayName, onCreate: createTable }))] }) }));
+    return (_jsx("main", { className: "shell", children: _jsxs("div", { className: "shell__inner", children: [_jsxs("header", { className: "masthead", children: [_jsx("h1", { children: "Friendly Hold'em" }), _jsxs("div", { className: "masthead__actions", children: [_jsxs("span", { className: `status status--${connectionState}`, children: [_jsx("span", { "aria-hidden": "true", className: "status__dot" }), connectionStatusLabel(connectionState)] }), _jsx("button", { "aria-label": theme === "light" ? "Switch to dark mode" : "Switch to light mode", className: "icon-button", onClick: () => setTheme(theme === "light" ? "dark" : "light"), type: "button", children: theme === "light" ? _jsx(MoonIcon, {}) : _jsx(SunIcon, {}) })] })] }), snapshot ? (_jsx(TableRoom, { error: error, inviteLink: inviteLink, onPlayerAction: playerAction, onSendChatMessage: sendChatMessage, onStartHand: startHand, onTableCommand: tableCommand, snapshot: snapshot })) : (_jsx(EntryPanel, { displayName: displayName, error: error, isDisabled: isCommandInputDisabled(Boolean(socket), connectionState), onDisplayNameChange: setDisplayName, onSubmit: tableIdFromUrl ? joinTable : createTable, tableId: tableIdFromUrl }))] }) }));
 }
-function CreateTablePanel(props) {
-    return (_jsxs("form", { className: "entry-panel", onSubmit: (event) => {
-            event.preventDefault();
-            props.onCreate();
-        }, children: [_jsx("label", { htmlFor: "create-display-name", children: "Your display name" }), _jsxs("div", { className: "entry-panel__row", children: [_jsx("input", { id: "create-display-name", maxLength: 32, required: true, value: props.displayName, onChange: (event) => props.onDisplayNameChange(event.target.value) }), _jsx("button", { disabled: props.isDisabled, type: "submit", children: "Create table" })] }), props.error ? _jsx("p", { className: "form-error", children: props.error }) : null] }));
-}
-function JoinTablePanel(props) {
-    return (_jsxs("form", { className: "entry-panel", onSubmit: (event) => {
-            event.preventDefault();
-            props.onJoin();
-        }, children: [_jsxs("p", { className: "table-code", children: ["Invite ", props.tableId] }), _jsx("label", { htmlFor: "join-display-name", children: "Your display name" }), _jsxs("div", { className: "entry-panel__row", children: [_jsx("input", { id: "join-display-name", maxLength: 32, required: true, value: props.displayName, onChange: (event) => props.onDisplayNameChange(event.target.value) }), _jsx("button", { disabled: props.isDisabled, type: "submit", children: "Join table" })] }), props.error ? _jsx("p", { className: "form-error", children: props.error }) : null] }));
-}
-function TableRoom({ error, snapshot, inviteLink, onPlayerAction, onSendChatMessage, onTableCommand, onStartHand }) {
-    const [raiseTo, setRaiseTo] = useState(() => String(snapshot.hand.currentBet + snapshot.defaults.blinds.bigBlind));
-    const [isRaiseSheetOpen, setIsRaiseSheetOpen] = useState(false);
-    const [nowMs, setNowMs] = useState(Date.now);
-    const [activeMobilePanel, setActiveMobilePanel] = useState("log");
-    const [chatDraft, setChatDraft] = useState("");
-    const [unreadChatCount, setUnreadChatCount] = useState(0);
-    const [openTutorial, setOpenTutorial] = useState(null);
-    const previousChatCountRef = useRef(snapshot.chatMessages.length);
-    const wasViewerTurnRef = useRef(false);
-    const host = snapshot.seats
-        .map((seat) => seat.player)
-        .find((player) => player?.isHost);
-    const currentActor = snapshot.seats
-        .map((seat) => seat.player)
-        .find((player) => player?.id === snapshot.hand.currentActorId);
-    const viewerPlayer = snapshot.seats
-        .map((seat) => seat.player)
-        .find((player) => player?.id === snapshot.viewerParticipantId);
-    const { minimumRaiseTo, maximumRaiseTo } = raiseBounds({
-        currentBet: snapshot.hand.currentBet,
-        bigBlind: snapshot.defaults.blinds.bigBlind,
-        viewer: viewerPlayer
-    });
-    const canRaise = snapshot.hand.legalActions.includes("raise");
-    const parsedRaiseTo = Number(raiseTo);
-    const isRaiseToValid = canRaise && isRaiseAmountInRange(parsedRaiseTo, minimumRaiseTo, maximumRaiseTo);
-    const currentActorInactiveForMs = snapshot.hand.currentActorSince === null ? 0 : Math.max(0, nowMs - snapshot.hand.currentActorSince);
-    const canHostAutoFoldInactive = snapshot.isHost &&
-        Boolean(currentActor) &&
-        Boolean(currentActor?.isConnected) &&
-        !currentActor?.isAllIn &&
-        currentActorInactiveForMs >= snapshot.defaults.hostAutoFoldAfterMs;
-    const isViewerTurn = snapshot.hand.currentActorId === snapshot.viewerParticipantId && snapshot.hand.legalActions.length > 0;
-    const latestPublicAction = snapshot.hand.actionLog.at(-1) ?? "No public action yet.";
-    useEffect(() => {
-        setRaiseTo(String(minimumRaiseTo));
-    }, [minimumRaiseTo, snapshot.hand.currentActorId]);
-    useEffect(() => {
-        setNowMs(Date.now());
-        const timer = window.setInterval(() => setNowMs(Date.now()), 250);
-        return () => window.clearInterval(timer);
-    }, [snapshot.hand.currentActorSince]);
-    useEffect(() => {
-        const previousCount = previousChatCountRef.current;
-        if (snapshot.chatMessages.length > previousCount && activeMobilePanel !== "chat") {
-            setUnreadChatCount((count) => count + snapshot.chatMessages.length - previousCount);
-        }
-        previousChatCountRef.current = snapshot.chatMessages.length;
-    }, [activeMobilePanel, snapshot.chatMessages.length]);
-    useEffect(() => {
-        if (activeMobilePanel === "chat") {
-            setUnreadChatCount(0);
-        }
-    }, [activeMobilePanel]);
-    useEffect(() => {
-        const originalTitle = "Friendly Hold'em";
-        document.title = isViewerTurn ? "Your turn - Friendly Hold'em" : originalTitle;
-        if (isViewerTurn && !wasViewerTurnRef.current && "vibrate" in navigator) {
-            navigator.vibrate?.(80);
-        }
-        wasViewerTurnRef.current = isViewerTurn;
-        return () => {
-            document.title = originalTitle;
-        };
-    }, [isViewerTurn]);
-    function submitChat() {
-        const body = chatDraft.trim();
-        if (!body) {
-            return;
-        }
-        onSendChatMessage(body);
-        setChatDraft("");
-        setActiveMobilePanel("chat");
-    }
-    function submitRaise(nextRaiseTo = parsedRaiseTo) {
-        if (!isRaiseAmountInRange(nextRaiseTo, minimumRaiseTo, maximumRaiseTo)) {
-            return;
-        }
-        onPlayerAction("raise", nextRaiseTo);
-        setIsRaiseSheetOpen(false);
-    }
-    return (_jsxs("div", { className: `table-layout ${isViewerTurn ? "table-layout--your-turn" : ""}`, children: [_jsxs("section", { className: "table-summary", "aria-labelledby": "table-summary-heading", children: [_jsxs("div", { children: [_jsx("p", { className: "eyebrow", children: snapshot.viewerRole }), _jsxs("h2", { id: "table-summary-heading", children: ["Table ", snapshot.tableId] })] }), _jsxs("div", { className: "invite-box", children: [_jsx("label", { htmlFor: "invite-link", children: "Invite link" }), _jsx("input", { id: "invite-link", readOnly: true, value: inviteLink, onFocus: (event) => event.target.select() })] }), _jsxs("div", { className: "tutorial-actions", "aria-label": "Tutorials", children: [_jsx("button", { onClick: () => setOpenTutorial("beginner"), type: "button", children: "Beginner tutorial" }), _jsx("button", { onClick: () => setOpenTutorial("host"), type: "button", children: "Host tutorial" })] }), _jsxs("dl", { className: "table-metrics", "aria-label": "Table status", children: [_jsxs("div", { children: [_jsx("dt", { children: "Host" }), _jsx("dd", { children: host?.displayName ?? "Unknown" })] }), _jsxs("div", { children: [_jsx("dt", { children: "Seats" }), _jsxs("dd", { children: [snapshot.seatedPlayerCount, "/6"] })] }), _jsxs("div", { children: [_jsx("dt", { children: "Spectators" }), _jsx("dd", { children: snapshot.spectatorCount })] }), _jsxs("div", { children: [_jsx("dt", { children: "Blinds" }), _jsxs("dd", { children: ["$", snapshot.defaults.blinds.smallBlind, "/$", snapshot.defaults.blinds.bigBlind] })] }), _jsxs("div", { children: [_jsx("dt", { children: "Phase" }), _jsx("dd", { children: formatPhase(snapshot.hand.phase) })] }), _jsxs("div", { children: [_jsx("dt", { children: "Pot" }), _jsxs("dd", { children: ["$", snapshot.hand.pot] })] }), _jsxs("div", { children: [_jsx("dt", { children: "To call" }), _jsxs("dd", { children: ["$", snapshot.hand.callAmount] })] }), _jsxs("div", { children: [_jsx("dt", { children: "Action" }), _jsx("dd", { children: currentActor?.displayName ?? "Waiting" })] })] })] }), _jsxs("section", { className: "mobile-hand-status", "aria-label": "Hand console status", children: [_jsxs("div", { children: [_jsx("span", { children: "Phase" }), _jsx("strong", { children: formatPhase(snapshot.hand.phase) })] }), _jsxs("div", { children: [_jsx("span", { children: "Pot" }), _jsxs("strong", { children: ["$", snapshot.hand.pot] })] }), _jsxs("div", { children: [_jsx("span", { children: "To call" }), _jsxs("strong", { children: ["$", snapshot.hand.callAmount] })] }), _jsxs("div", { children: [_jsx("span", { children: "Current bet" }), _jsxs("strong", { children: ["$", snapshot.hand.currentBet] })] }), _jsxs("div", { children: [_jsx("span", { children: "Action" }), _jsx("strong", { children: currentActor?.displayName ?? "Waiting" })] })] }), _jsxs("nav", { className: "mobile-tabs", "aria-label": "Table panels", children: [_jsx("button", { "aria-pressed": activeMobilePanel === "log", onClick: () => setActiveMobilePanel("log"), type: "button", children: "Log" }), _jsxs("button", { "aria-pressed": activeMobilePanel === "chat", onClick: () => setActiveMobilePanel("chat"), type: "button", children: ["Chat", unreadChatCount > 0 ? ` (${unreadChatCount})` : ""] }), _jsx("button", { "aria-pressed": activeMobilePanel === "players", onClick: () => setActiveMobilePanel("players"), type: "button", children: "Players" }), _jsx("button", { "aria-pressed": activeMobilePanel === "manage", onClick: () => setActiveMobilePanel("manage"), type: "button", children: "Manage" })] }), _jsxs("section", { className: "felt-panel", "aria-labelledby": "felt-heading", children: [_jsxs("div", { className: "felt-panel__header", children: [_jsxs("div", { children: [_jsxs("p", { className: "eyebrow", children: ["Hand ", snapshot.hand.handNumber || "-"] }), _jsx("h2", { id: "felt-heading", children: formatPhase(snapshot.hand.phase) })] }), _jsxs("span", { className: "pot-chip", children: ["$", snapshot.hand.currentBet, " current bet"] })] }), _jsx("div", { className: "board-row", "aria-label": "Community cards", children: snapshot.hand.board.length > 0 ? (snapshot.hand.board.map((card) => _jsx(CardView, { card: card }, `${card.rank}-${card.suit}`))) : (_jsx("span", { className: "empty-board", children: "Board waiting for the flop" })) }), _jsxs("div", { className: "hole-card-tray", "aria-label": "Your hole cards", children: [_jsx("span", { children: "Your cards" }), _jsx("div", { children: snapshot.hand.viewerHoleCards.length > 0 ? (snapshot.hand.viewerHoleCards.map((card) => _jsx(CardView, { card: card }, `${card.rank}-${card.suit}`))) : (_jsx("span", { className: "card-back", children: "Hidden" })) })] }), _jsxs("p", { className: "latest-action", "aria-live": "polite", children: [_jsx("span", { children: "Latest action" }), latestPublicAction] }), _jsx(ActionBar, { canRaise: canRaise, callAmount: snapshot.hand.callAmount, legalActions: snapshot.hand.legalActions, minimumRaiseTo: minimumRaiseTo, maximumRaiseTo: maximumRaiseTo, raiseTo: raiseTo, isRaiseToValid: isRaiseToValid, onAction: onPlayerAction, onOpenRaiseSheet: () => setIsRaiseSheetOpen(true), onRaiseToChange: setRaiseTo })] }), _jsx("section", { className: "mobile-player-strip", "aria-label": "Compact seated players", children: snapshot.seats.map((seat) => (_jsx(CompactSeat, { seat: seat }, seat.seatNumber))) }), _jsx("section", { className: "seat-grid", "aria-label": "Seated players", children: snapshot.seats.map((seat) => (_jsx(SeatCard, { seat: seat }, seat.seatNumber))) }), _jsxs("aside", { className: "rail-panel", "aria-labelledby": "rail-heading", children: [_jsx("h2", { id: "rail-heading", children: "Panels" }), _jsxs("div", { className: "rail-panel__section rail-panel__section--manage", "data-active": activeMobilePanel === "manage", children: [_jsxs("div", { className: "mobile-resource-actions", "aria-label": "Invite and tutorials", children: [_jsxs("div", { className: "invite-box", children: [_jsx("label", { htmlFor: "mobile-invite-link", children: "Manage invite link" }), _jsx("input", { id: "mobile-invite-link", readOnly: true, value: inviteLink, onFocus: (event) => event.target.select() })] }), _jsx("button", { onClick: () => setOpenTutorial("beginner"), type: "button", children: "Beginner tutorial" }), _jsx("button", { onClick: () => setOpenTutorial("host"), type: "button", children: "Host tutorial" })] }), _jsx(RailControls, { canHostAutoFoldInactive: canHostAutoFoldInactive, snapshot: snapshot, onStartHand: onStartHand, onTableCommand: onTableCommand })] }), error ? _jsx("p", { className: "form-error", children: error }) : null, _jsx("div", { className: "rail-panel__section rail-panel__section--log", "data-active": activeMobilePanel === "log", children: _jsx(ActionLog, { entries: snapshot.hand.actionLog }) }), _jsx("div", { className: "rail-panel__section rail-panel__section--chat", "data-active": activeMobilePanel === "chat", children: _jsx(ChatPanel, { chatDraft: chatDraft, messages: snapshot.chatMessages, onChatDraftChange: setChatDraft, onSubmitChat: submitChat }) }), _jsx("div", { className: "rail-panel__section rail-panel__section--players", "data-active": activeMobilePanel === "players", children: _jsx(PlayersPanel, { seats: snapshot.seats }) })] }), _jsxs("div", { className: "mobile-context-controls", "aria-label": "Contextual host actions", children: [snapshot.availableControls.canStartHand ? (_jsx("button", { onClick: onStartHand, type: "button", children: "Start hand" })) : null, snapshot.availableControls.canDealNextHand ? (_jsx("button", { onClick: () => onTableCommand("hand:next", { tableId: snapshot.tableId }, "Unable to deal next hand."), type: "button", children: "Deal next hand" })) : null, canHostAutoFoldInactive ? (_jsx("button", { onClick: () => onTableCommand("host:autoFoldInactive", { tableId: snapshot.tableId }, "Unable to auto-fold inactive player."), type: "button", children: "Auto-fold inactive" })) : null] }), openTutorial ? _jsx(TutorialDialog, { kind: openTutorial, onClose: () => setOpenTutorial(null) }) : null, isRaiseSheetOpen ? (_jsx(RaiseSheet, { callAmount: snapshot.hand.callAmount, currentBet: snapshot.hand.currentBet, isRaiseToValid: isRaiseToValid, maximumRaiseTo: maximumRaiseTo, minimumRaiseTo: minimumRaiseTo, pot: snapshot.hand.pot, raiseTo: raiseTo, stack: viewerPlayer?.stack ?? 0, onCancel: () => setIsRaiseSheetOpen(false), onRaiseToChange: setRaiseTo, onSubmit: submitRaise })) : null] }));
-}
-function CompactSeat({ seat }) {
-    const player = seat.player;
-    return (_jsxs("article", { className: `compact-seat ${player?.isCurrentActor ? "compact-seat--acting" : ""}`, children: [_jsxs("span", { className: "compact-seat__seat", children: ["S", seat.seatNumber + 1] }), player ? (_jsxs(_Fragment, { children: [_jsx("strong", { children: player.displayName }), _jsxs("span", { children: ["$", player.stack] }), _jsxs("span", { children: ["Bet $", player.currentBet] }), _jsxs("div", { "aria-label": `${player.displayName} compact status`, children: [player.isButton ? _jsx("span", { children: "D" }) : null, player.isSmallBlind ? _jsx("span", { children: "SB" }) : null, player.isBigBlind ? _jsx("span", { children: "BB" }) : null, player.isCurrentActor ? _jsx("span", { children: "Acting" }) : null, player.isBot ? _jsx("span", { children: "Bot" }) : null, !player.isConnected && !player.isBot ? _jsx("span", { children: "Away" }) : null, player.isSittingOut ? _jsx("span", { children: "Out" }) : null, player.isBusted ? _jsx("span", { children: "Busted" }) : null] })] })) : (_jsxs(_Fragment, { children: [_jsx("strong", { children: "Open" }), _jsx("span", { children: "No player" })] }))] }));
-}
-function SeatCard({ seat }) {
-    return (_jsxs("article", { className: `seat ${seat.player?.isCurrentActor ? "seat--acting" : ""}`, children: [_jsxs("span", { className: "seat__number", children: ["Seat ", seat.seatNumber + 1] }), seat.player ? (_jsxs(_Fragment, { children: [_jsxs("div", { className: "seat__title", children: [_jsx("strong", { children: seat.player.displayName }), _jsxs("span", { children: ["$", seat.player.stack] })] }), _jsxs("div", { className: "seat__badges", "aria-label": `${seat.player.displayName} seat status`, children: [seat.player.isButton ? _jsx("span", { children: "Button" }) : null, seat.player.isSmallBlind ? _jsx("span", { children: "Small blind" }) : null, seat.player.isBigBlind ? _jsx("span", { children: "Big blind" }) : null, seat.player.hasCards ? _jsx("span", { children: "Cards dealt" }) : null, seat.player.hasFolded ? _jsx("span", { children: "Folded" }) : null, seat.player.isAllIn ? _jsx("span", { children: "All-in" }) : null, seat.player.isSittingOut ? _jsx("span", { children: "Sitting out" }) : null, seat.player.isBusted ? _jsx("span", { children: "Busted" }) : null, seat.player.isBot ? _jsx("span", { children: "Bot" }) : null, !seat.player.isConnected && !seat.player.isBot ? _jsx("span", { children: "Away" }) : null, seat.player.inactiveForMs !== null ? _jsxs("span", { children: ["Inactive ", formatDuration(seat.player.inactiveForMs)] }) : null, seat.player.isHost ? _jsx("span", { children: "Host" }) : null] }), seat.player.visibleHoleCards.length > 0 ? (_jsx("div", { className: "revealed-cards", "aria-label": `${seat.player.displayName} revealed cards`, children: seat.player.visibleHoleCards.map((card) => (_jsx(CardView, { card: card }, `${seat.player?.id}-${card.rank}-${card.suit}`))) })) : null, _jsxs("span", { children: [seat.player.isConnected ? "Connected" : "Away", " / Bet $", seat.player.currentBet] })] })) : (_jsxs(_Fragment, { children: [_jsx("strong", { children: "Open" }), _jsx("span", { children: "Available before the first hand" })] }))] }));
-}
-function PlayersPanel({ seats }) {
-    return (_jsxs("section", { className: "players-panel", "aria-label": "Player details", children: [_jsx("h3", { children: "Players" }), _jsx("div", { children: seats.map((seat) => (_jsx(SeatCard, { seat: seat }, seat.seatNumber))) })] }));
-}
-function RailControls({ canHostAutoFoldInactive, snapshot, onStartHand, onTableCommand }) {
-    return (_jsxs(_Fragment, { children: [_jsxs("div", { className: "spectator-list", children: [_jsx("h3", { children: "Spectators" }), snapshot.spectators.length > 0 ? (_jsx("ul", { children: snapshot.spectators.map((spectator) => (_jsxs("li", { children: [spectator.displayName, _jsx("span", { children: spectator.isConnected ? "watching" : "away" })] }, spectator.id))) })) : (_jsx("p", { children: "No spectators yet." }))] }), _jsxs("div", { className: "control-strip", "aria-label": "Available controls", children: [_jsx("button", { disabled: !snapshot.availableControls.canStartHand, onClick: onStartHand, type: "button", children: "Start hand" }), _jsx("button", { disabled: !canHostAutoFoldInactive, onClick: () => onTableCommand("host:autoFoldInactive", { tableId: snapshot.tableId }, "Unable to auto-fold inactive player."), type: "button", children: "Auto-fold inactive" }), _jsx("button", { disabled: !snapshot.availableControls.canDealNextHand, onClick: () => onTableCommand("hand:next", { tableId: snapshot.tableId }, "Unable to deal next hand."), type: "button", children: "Deal next hand" }), _jsx("button", { disabled: !snapshot.availableControls.canSitOut, onClick: () => onTableCommand("player:sitOut", { tableId: snapshot.tableId }, "Unable to sit out."), type: "button", children: "Sit out" }), _jsx("button", { disabled: !snapshot.availableControls.canRejoin, onClick: () => onTableCommand("player:rejoin", { tableId: snapshot.tableId }, "Unable to rejoin."), type: "button", children: "Rejoin" })] }), snapshot.isHost ? (_jsxs("div", { className: "host-controls", "aria-label": "Host table controls", children: [_jsxs("div", { className: "host-controls__row", children: [_jsx("span", { children: "Bot players" }), _jsx("button", { disabled: !snapshot.availableControls.canAddBot, onClick: () => onTableCommand("host:addBot", { tableId: snapshot.tableId }, "Unable to add bot."), type: "button", children: "Add bot" })] }), snapshot.spectators.length > 0 ? (_jsxs("div", { children: [_jsx("h3", { children: "Seat spectators" }), snapshot.spectators.map((spectator) => (_jsxs("button", { disabled: !snapshot.availableControls.canSeatSpectators, onClick: () => onTableCommand("host:seatSpectator", { tableId: snapshot.tableId, participantId: spectator.id }, "Unable to seat spectator."), type: "button", children: ["Seat ", spectator.displayName] }, spectator.id)))] })) : null, _jsxs("div", { children: [_jsx("h3", { children: "Players" }), snapshot.seats
-                                .map((seat) => seat.player)
-                                .filter(isSeatPlayer)
-                                .filter((player) => !player.isHost)
-                                .map((player) => (_jsxs("div", { className: "host-controls__row", children: [_jsx("span", { children: player.displayName }), _jsx("button", { disabled: snapshot.hand.phase !== "settled" && snapshot.hand.phase !== "waiting", onClick: () => onTableCommand("host:approveRebuy", { tableId: snapshot.tableId, participantId: player.id }, "Unable to approve rebuy."), type: "button", children: "Rebuy" }), _jsx("button", { disabled: player.isConnected || (snapshot.hand.phase !== "settled" && snapshot.hand.phase !== "waiting"), onClick: () => onTableCommand("host:removePlayer", { tableId: snapshot.tableId, participantId: player.id }, "Unable to remove player."), type: "button", children: "Remove" })] }, player.id)))] })] })) : null] }));
-}
-function ActionLog({ entries }) {
-    return (_jsxs("div", { className: "action-log", "aria-label": "Public action log", children: [_jsx("h3", { children: "Action log" }), entries.length > 0 ? (_jsx("ol", { children: entries.map((entry, index) => (_jsx("li", { children: entry }, `${entry}-${index}`))) })) : (_jsx("p", { children: "No hand actions yet." }))] }));
-}
-function ChatPanel({ chatDraft, messages, onChatDraftChange, onSubmitChat }) {
-    return (_jsxs("section", { className: "chat-panel", "aria-label": "Table chat", children: [_jsx("h3", { children: "Chat" }), _jsx("ol", { className: "chat-messages", children: messages.length > 0 ? (messages.map((message) => (_jsxs("li", { children: [_jsx("strong", { children: message.displayName }), _jsx("span", { children: formatTime(message.sentAt) }), _jsx("p", { children: message.body })] }, message.id)))) : (_jsx("li", { className: "chat-messages__empty", children: "No messages yet." })) }), _jsxs("form", { className: "chat-form", onSubmit: (event) => {
-                    event.preventDefault();
-                    onSubmitChat();
-                }, children: [_jsx("label", { htmlFor: "chat-message", children: "Message" }), _jsx("textarea", { id: "chat-message", maxLength: 180, value: chatDraft, onChange: (event) => onChatDraftChange(event.target.value) }), _jsx("button", { disabled: !chatDraft.trim(), type: "submit", children: "Send" })] })] }));
-}
-function TutorialDialog({ kind, onClose }) {
-    const isBeginner = kind === "beginner";
-    const title = isBeginner ? "Beginner tutorial" : "Host tutorial";
-    const steps = isBeginner
-        ? [
-            "Each hand starts with blinds, then every active player receives two private hole cards.",
-            "The board is dealt in streets: flop, turn, and river, with betting before and after each street.",
-            "On your turn you may fold, check, call, raise, or move all-in when that action is legal.",
-            "All-in players stay eligible for pots they helped build; side pots separate chips they cannot win.",
-            "At showdown, eligible hands reveal and the best five-card hand wins: high card through straight flush."
-        ]
-        : [
-            "Create a table, copy the invite link, and share it with friends privately.",
-            "Before the first hand, joiners auto-seat until six seats are filled; later joiners watch as spectators.",
-            "Use Start hand for hand one, then Deal next hand after settlement.",
-            "Between hands you can seat spectators, approve rebuys, and remove away seated players.",
-            "If a connected player stalls on their turn, the host auto-fold control appears after the inactivity window."
-        ];
-    return (_jsx("div", { className: "tutorial-dialog", role: "dialog", "aria-modal": "true", "aria-labelledby": "tutorial-title", children: _jsxs("div", { className: "tutorial-dialog__panel", children: [_jsxs("div", { className: "tutorial-dialog__header", children: [_jsx("h2", { id: "tutorial-title", children: title }), _jsx("button", { onClick: onClose, type: "button", children: "Close" })] }), _jsx("ol", { children: steps.map((step) => (_jsx("li", { children: step }, step))) })] }) }));
-}
-function ActionBar({ canRaise, callAmount, legalActions, maximumRaiseTo, minimumRaiseTo, raiseTo, isRaiseToValid, onAction, onOpenRaiseSheet, onRaiseToChange }) {
-    const actionOrder = ["fold", "check", "call", "all-in"];
-    return (_jsx("div", { className: "action-bar", "aria-label": "Player actions", children: legalActions.length > 0 ? (_jsxs(_Fragment, { children: [_jsxs("div", { className: "action-bar__buttons", children: [actionOrder.map((action) => (_jsx("button", { disabled: !legalActions.includes(action), onClick: () => onAction(action), type: "button", children: formatAction(action) }, action))), _jsx("button", { className: "mobile-raise-trigger", disabled: !canRaise, onClick: onOpenRaiseSheet, type: "button", children: "Raise" })] }), _jsxs("div", { className: "raise-control", children: [_jsx("label", { htmlFor: "raise-to", children: "Raise to" }), _jsx("input", { disabled: !canRaise, id: "raise-to", max: maximumRaiseTo, min: minimumRaiseTo, step: 1, type: "number", value: raiseTo, onChange: (event) => onRaiseToChange(event.target.value) }), _jsx("button", { disabled: !isRaiseToValid, onClick: () => onAction("raise", Number(raiseTo)), title: `Call $${callAmount}, raise min $${minimumRaiseTo}`, type: "button", children: "Raise" })] })] })) : (_jsx("span", { children: "No action available" })) }));
-}
-function RaiseSheet({ callAmount, currentBet, isRaiseToValid, maximumRaiseTo, minimumRaiseTo, pot, raiseTo, stack, onCancel, onRaiseToChange, onSubmit }) {
-    const presetRaises = raisePresets({ minimumRaiseTo, maximumRaiseTo, currentBet, pot, callAmount });
-    return (_jsx("div", { className: "raise-sheet", role: "dialog", "aria-modal": "true", "aria-labelledby": "raise-sheet-title", children: _jsxs("form", { className: "raise-sheet__panel", onSubmit: (event) => {
-                event.preventDefault();
-                onSubmit();
-            }, children: [_jsxs("div", { className: "raise-sheet__header", children: [_jsxs("div", { children: [_jsx("p", { className: "eyebrow", children: "Focused action" }), _jsx("h2", { id: "raise-sheet-title", children: "Raise" })] }), _jsx("button", { className: "button-secondary", onClick: onCancel, type: "button", children: "Cancel" })] }), _jsxs("dl", { className: "raise-sheet__metrics", "aria-label": "Raise context", children: [_jsxs("div", { children: [_jsx("dt", { children: "Stack" }), _jsxs("dd", { children: ["$", stack] })] }), _jsxs("div", { children: [_jsx("dt", { children: "Pot" }), _jsxs("dd", { children: ["$", pot] })] }), _jsxs("div", { children: [_jsx("dt", { children: "Current bet" }), _jsxs("dd", { children: ["$", currentBet] })] }), _jsxs("div", { children: [_jsx("dt", { children: "Call" }), _jsxs("dd", { children: ["$", callAmount] })] }), _jsxs("div", { children: [_jsx("dt", { children: "Min raise" }), _jsxs("dd", { children: ["$", minimumRaiseTo] })] })] }), _jsx("div", { className: "raise-presets", "aria-label": "Preset raise choices", children: presetRaises.map((preset) => (_jsxs("button", { disabled: preset.value < minimumRaiseTo || preset.value > maximumRaiseTo, onClick: () => onRaiseToChange(String(preset.value)), type: "button", children: [preset.label, " $", preset.value] }, preset.label))) }), _jsxs("label", { className: "raise-exact", htmlFor: "raise-sheet-amount", children: ["Exact raise to", _jsx("input", { id: "raise-sheet-amount", inputMode: "numeric", max: maximumRaiseTo, min: minimumRaiseTo, step: 1, type: "number", value: raiseTo, onChange: (event) => onRaiseToChange(event.target.value) })] }), _jsxs("p", { className: "raise-sheet__hint", children: ["Allowed range $", minimumRaiseTo, " to $", maximumRaiseTo, "."] }), _jsx("button", { disabled: !isRaiseToValid, type: "submit", children: "Confirm raise" })] }) }));
-}
-function CardView({ card }) {
-    const suit = suitSymbol(card.suit);
-    const pips = pipPositions(card.rank);
-    const label = `${card.rank} of ${card.suit}`;
-    return (_jsxs("span", { "aria-label": label, className: `playing-card playing-card--${card.suit}`, role: "img", children: [_jsxs("span", { className: "playing-card__corner playing-card__corner--top", children: [_jsx("strong", { children: card.rank }), _jsx("span", { children: suit })] }), pips.length > 0 ? (_jsx("span", { className: `playing-card__pips playing-card__pips--${pips.length}`, "aria-hidden": "true", children: pips.map((position, index) => (_jsx("span", { className: `playing-card__pip playing-card__pip--${position}`, children: suit }, `${position}-${index}`))) })) : (_jsxs("span", { className: "playing-card__face", "aria-hidden": "true", children: [_jsx("span", { children: card.rank }), _jsx("small", { children: suit })] })), _jsxs("span", { className: "playing-card__corner playing-card__corner--bottom", "aria-hidden": "true", children: [_jsx("strong", { children: card.rank }), _jsx("span", { children: suit })] })] }));
-}
-function isSeatPlayer(player) {
-    return Boolean(player);
-}
-function formatPhase(phase) {
-    return phase === "preflop" ? "Preflop" : phase[0]?.toUpperCase() + phase.slice(1);
-}
-function formatAction(action) {
-    return action === "all-in" ? "All-in" : action[0]?.toUpperCase() + action.slice(1);
-}
-function formatDuration(milliseconds) {
-    const seconds = Math.max(0, Math.floor(milliseconds / 1000));
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return minutes > 0 ? `${minutes}m ${remainingSeconds}s` : `${remainingSeconds}s`;
-}
-function formatTime(value) {
-    return new Intl.DateTimeFormat(undefined, {
-        hour: "numeric",
-        minute: "2-digit"
-    }).format(new Date(value));
-}
-function suitSymbol(suit) {
-    const symbols = {
-        clubs: "♣",
-        diamonds: "♦",
-        hearts: "♥",
-        spades: "♠"
-    };
-    return symbols[suit];
-}
-function pipPositions(rank) {
-    const positionsByRank = {
-        A: ["center"],
-        "2": ["top-center", "bottom-center"],
-        "3": ["top-center", "center", "bottom-center"],
-        "4": ["top-left", "top-right", "bottom-left", "bottom-right"],
-        "5": ["top-left", "top-right", "center", "bottom-left", "bottom-right"],
-        "6": ["top-left", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-right"],
-        "7": ["top-left", "top-right", "middle-left", "middle-right", "center", "bottom-left", "bottom-right"],
-        "8": [
-            "top-left",
-            "top-right",
-            "upper-left",
-            "upper-right",
-            "lower-left",
-            "lower-right",
-            "bottom-left",
-            "bottom-right"
-        ],
-        "9": [
-            "top-left",
-            "top-right",
-            "upper-left",
-            "upper-right",
-            "center",
-            "lower-left",
-            "lower-right",
-            "bottom-left",
-            "bottom-right"
-        ],
-        "10": [
-            "top-left",
-            "top-right",
-            "upper-left",
-            "upper-right",
-            "middle-left",
-            "middle-right",
-            "lower-left",
-            "lower-right",
-            "bottom-left",
-            "bottom-right"
-        ],
-        J: [],
-        Q: [],
-        K: []
-    };
-    return positionsByRank[rank];
+// One entry panel for both arrivals. Creating and joining differ by a single
+// fact — whether the URL already names a table — so they are one component with
+// one label, not two near-identical forms.
+function EntryPanel({ displayName, error, isDisabled, tableId, onDisplayNameChange, onSubmit }) {
+    const isJoining = Boolean(tableId);
+    return (_jsx("section", { className: "entry", children: _jsxs("div", { className: "entry__card", children: [_jsx("h2", { children: isJoining ? "Join the table" : "Deal your friends in" }), _jsx("p", { className: "entry__lead", children: isJoining
+                        ? "Pick a name your friends will recognise. No account, no password."
+                        : "Start a private table, send one link, and play. Play money only — nothing here is real." }), _jsxs("form", { className: "entry__form", onSubmit: (event) => {
+                        event.preventDefault();
+                        onSubmit();
+                    }, children: [_jsxs("label", { className: "field", htmlFor: "display-name", children: [_jsx("span", { children: "Your display name" }), _jsx("input", { autoComplete: "nickname", id: "display-name", maxLength: 32, placeholder: "e.g. Grace", required: true, value: displayName, onChange: (event) => onDisplayNameChange(event.target.value) })] }), _jsx("button", { className: "action action--primary action--wide", disabled: isDisabled, type: "submit", children: _jsx("span", { className: "action__label", children: isJoining ? "Join table" : "Create table" }) })] }), error ? (_jsx("p", { className: "form-error", role: "alert", children: error })) : null, isJoining ? _jsxs("p", { className: "entry__note", children: ["Invite ", tableId] }) : null] }) }));
 }
 function emitCommand(socket, eventName, payload) {
     return new Promise((resolve, reject) => {
