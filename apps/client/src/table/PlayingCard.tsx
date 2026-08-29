@@ -79,6 +79,6 @@ export function PlayingCard({ card, size = "md", dealIndex }: { card: Card; size
 }
 
 // A face-down card. Used for opponents holding cards we are not allowed to see.
-export function CardBack({ size = "sm" }: { size?: "sm" | "md" | "lg" }) {
+export function CardBack({ size = "sm" }: { size?: "xs" | "sm" | "md" | "lg" }) {
   return <span aria-hidden="true" className={`card card--back card--${size}`} />;
 }

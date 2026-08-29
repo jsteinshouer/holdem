@@ -50,14 +50,13 @@ export function Rail({
 
   return (
     <aside className="rail" aria-label="Table panels">
-      <div className="rail__tabs" role="tablist" aria-label="Table panels">
+      <div className="rail__tabs">
         {tabs.map((tab) => (
           <button
-            aria-selected={activeTab === tab.id}
+            aria-pressed={activeTab === tab.id}
             className="rail__tab"
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
-            role="tab"
             type="button"
           >
             {tab.label}
@@ -68,10 +67,12 @@ export function Rail({
 
       <div className="rail__body">
         <section className="rail__section" data-active={activeTab === "log"} aria-label="Public action log">
+          <h3 className="rail__title">Action log</h3>
           <ActionLog entries={snapshot.hand.actionLog} />
         </section>
 
         <section className="rail__section" data-active={activeTab === "chat"} aria-label="Table chat">
+          <h3 className="rail__title">Chat</h3>
           <ChatPanel
             chatDraft={chatDraft}
             messages={snapshot.chatMessages}
@@ -80,11 +81,13 @@ export function Rail({
           />
         </section>
 
-        <section className="rail__section" data-active={activeTab === "players"} aria-label="Player roster">
+        <section className="rail__section" data-active={activeTab === "players"} aria-label="Player details">
+          <h3 className="rail__title">Players</h3>
           <PlayersPanel snapshot={snapshot} />
         </section>
 
         <section className="rail__section" data-active={activeTab === "manage"} aria-label="Manage table">
+          <h3 className="rail__title">Manage</h3>
           <ManagePanel
             canHostAutoFoldInactive={canHostAutoFoldInactive}
             inviteLink={inviteLink}

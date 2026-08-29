@@ -557,47 +557,63 @@ textarea::placeholder {
 }
 
 /* --- The felt: one ring, viewer anchored at six o'clock ------------------- */
-
 .felt {
   position: relative;
-  aspect-ratio: 1 / 1.15;
-  padding: var(--s-lg);
+  padding: var(--s-md);
   border: 6px solid var(--felt-rail);
-  border-radius: 46% / 40%;
+  border-radius: var(--r-md);
   background: var(--felt);
   color: var(--on-felt);
-  --rx: 37%;
-  --ry: 39%;
-  --seat-w: 96px;
+  /* Narrow: a six-seat ellipse cannot hold a board and a pot on a phone — two
+     112px plates leave only 163px between them. The ring flattens into a grid:
+     the same Seat component in a different container, opponents still ordered
+     clockwise from the viewer, the viewer still at the foot. */
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-sm);
+  align-content: start;
 }
 
 @container felt (min-width: 620px) {
   .felt {
-    aspect-ratio: 1.7 / 1;
-    border-radius: 42% / 46%;
-    --rx: 39%;
-    --ry: 34%;
-    --seat-w: 140px;
+    display: block;
+    aspect-ratio: 1.4 / 1;
+    padding: var(--s-lg);
+    border-radius: 42% / 44%;
+    /* Ring and centre keep separate origins so the top seat never lands on the
+       board. */
+    --ring-cy: 45%;
+    --centre-y: 55%;
+    --rx: 38%;
+    --ry: 30%;
+    --seat-w: 148px;
   }
 }
 
 @container felt (min-width: 900px) {
   .felt {
-    aspect-ratio: 1.9 / 1;
-    --seat-w: 156px;
+    aspect-ratio: 1.6 / 1;
+    --seat-w: 164px;
   }
 }
 
 .felt__center {
-  position: absolute;
-  top: 50%;
-  left: 50%;
+  grid-column: 1 / -1;
+  order: 2;
   display: grid;
   justify-items: center;
   gap: var(--s-sm);
-  width: min(78%, 460px);
-  transform: translate(-50%, -50%);
   text-align: center;
+}
+
+@container felt (min-width: 620px) {
+  .felt__center {
+    position: absolute;
+    top: var(--centre-y);
+    left: 50%;
+    width: min(78%, 380px);
+    transform: translate(-50%, -50%);
+  }
 }
 
 .felt__phase {
@@ -620,6 +636,20 @@ textarea::placeholder {
   justify-content: center;
   min-height: 64px;
   align-items: center;
+}
+
+@container felt (max-width: 619px) {
+  .board {
+    min-height: 44px;
+  }
+
+  .felt__phase {
+    font-size: var(--t-title);
+  }
+
+  .pot__amount {
+    font-size: var(--t-headline);
+  }
 }
 
 .board__empty {
@@ -656,26 +686,68 @@ textarea::placeholder {
 }
 
 /* --- Seats --------------------------------------------------------------- */
-
 .seat {
-  position: absolute;
-  left: calc(50% + var(--rx) * cos(var(--seat-angle)));
-  top: calc(50% + var(--ry) * sin(var(--seat-angle)));
+  order: 1;
   display: grid;
   gap: 2px;
-  width: var(--seat-w);
-  padding: var(--s-sm) var(--s-md);
+  padding: var(--s-sm);
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);
   background: var(--panel);
   color: var(--ink);
-  transform: translate(-50%, -50%);
   transition: box-shadow 160ms var(--ease), opacity 160ms var(--ease);
 }
 
+@container felt (min-width: 620px) {
+  .seat {
+    position: absolute;
+    left: calc(50% + var(--rx) * cos(var(--seat-angle)));
+    top: calc(var(--ring-cy) + var(--ry) * sin(var(--seat-angle)));
+    width: var(--seat-w);
+    padding: var(--s-sm) var(--s-md);
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* You are always at six o'clock: the foot of the ring on a wide screen, the last
+   row of the grid on a narrow one. Either way the plate spans the full width so
+   your own cards read at a glance. */
 .seat--viewer {
-  width: calc(var(--seat-w) + 48px);
+  order: 3;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "head cards"
+    "stack cards"
+    "bet cards"
+    "states cards"
+    "hand cards";
+  align-items: center;
+  column-gap: var(--s-md);
   border-color: var(--hairline-strong);
+}
+
+@container felt (min-width: 620px) {
+  .seat--viewer {
+    position: absolute;
+    top: auto;
+    bottom: var(--s-sm);
+    left: 50%;
+    width: min(96%, 460px);
+    transform: translateX(-50%);
+  }
+}
+
+.seat--viewer .seat__head { grid-area: head; }
+.seat--viewer .seat__stack { grid-area: stack; }
+.seat--viewer .seat__bet { grid-area: bet; }
+.seat--viewer .seat__states { grid-area: states; }
+.seat--viewer .seat__hand-name { grid-area: hand; }
+
+.seat--viewer .seat__cards {
+  grid-area: cards;
+  align-self: center;
+  margin-top: 0;
 }
 
 .seat--empty {
@@ -744,8 +816,12 @@ textarea::placeholder {
 }
 
 .seat__stack {
+  min-width: 0;
+  overflow: hidden;
   font-size: var(--t-body);
   font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .seat__bet {
@@ -783,6 +859,11 @@ textarea::placeholder {
   color: var(--brass-text);
 }
 
+/* A duration is a unit, not a label: "0s" must not become "0S". */
+.state--idle {
+  text-transform: none;
+}
+
 .state--allin {
   border-color: var(--brass);
   background: var(--brass);
@@ -805,11 +886,14 @@ textarea::placeholder {
 /* --- Playing cards ------------------------------------------------------- */
 
 .card {
+  --cw: 40px;
+  --ch: 56px;
   position: relative;
   display: inline-block;
   flex: 0 0 auto;
-  width: 46px;
-  height: 64px;
+  width: var(--cw);
+  height: var(--ch);
+  overflow: hidden;
   border: 1px solid var(--paper-edge);
   border-radius: var(--r-sm);
   background: var(--paper);
@@ -818,14 +902,36 @@ textarea::placeholder {
   font-weight: 700;
 }
 
+.card--xs {
+  --cw: 26px;
+  --ch: 36px;
+}
+
+.card--sm {
+  --cw: 40px;
+  --ch: 56px;
+}
+
 .card--md {
-  width: 58px;
-  height: 81px;
+  --cw: 54px;
+  --ch: 75px;
 }
 
 .card--lg {
-  width: 92px;
-  height: 128px;
+  --cw: 64px;
+  --ch: 89px;
+}
+
+@container felt (min-width: 620px) {
+  .card--md {
+    --cw: 62px;
+    --ch: 86px;
+  }
+
+  .card--lg {
+    --cw: 72px;
+    --ch: 100px;
+  }
 }
 
 .card--hearts,
@@ -849,41 +955,35 @@ textarea::placeholder {
   display: grid;
   justify-items: center;
   line-height: 0.86;
-  font-size: 0.8125rem;
-}
-
-.card--md .card__corner,
-.card--lg .card__corner {
-  font-size: var(--t-title);
+  font-size: calc(var(--ch) * 0.17);
 }
 
 .card__corner--top {
-  top: 4px;
-  left: 5px;
+  top: calc(var(--ch) * 0.05);
+  left: calc(var(--cw) * 0.08);
 }
 
 .card__corner--bottom {
-  right: 5px;
-  bottom: 4px;
+  right: calc(var(--cw) * 0.08);
+  bottom: calc(var(--ch) * 0.05);
   transform: rotate(180deg);
 }
 
 .card__pips {
   position: absolute;
-  inset: 18% 26%;
+  inset: calc(var(--ch) * 0.16) calc(var(--cw) * 0.26);
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(7, 1fr);
   place-items: center;
-  font-size: 0.6875rem;
+  font-size: calc(var(--ch) * 0.115);
+  line-height: 1;
 }
 
-.card--md .card__pips {
-  font-size: 0.8125rem;
-}
-
-.card--lg .card__pips {
-  font-size: 1rem;
+/* Below this size the pip field is unreadable noise; the corner rank carries
+   the card on its own. */
+.card--xs .card__pips {
+  display: none;
 }
 
 .card__pip--top-left { grid-area: 1 / 1; }
@@ -907,14 +1007,8 @@ textarea::placeholder {
   place-content: center;
   justify-items: center;
   gap: 2px;
-  font-size: 1.25rem;
+  font-size: calc(var(--ch) * 0.26);
 }
-
-.card--lg .card__court {
-  font-size: 1.75rem;
-}
-
-/* --- Chips --------------------------------------------------------------- */
 
 .chips {
   display: inline-flex;
@@ -1013,7 +1107,7 @@ textarea::placeholder {
   cursor: pointer;
 }
 
-.rail__tab[aria-selected="true"] {
+.rail__tab[aria-pressed="true"] {
   border-bottom-color: var(--brass);
   color: var(--ink);
 }
@@ -1043,6 +1137,52 @@ textarea::placeholder {
 
 .rail__section[data-active="true"] {
   display: block;
+}
+
+.rail__title {
+  margin-bottom: var(--s-md);
+  color: var(--ink-muted);
+  font-family: var(--ui);
+  font-size: var(--t-label);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Narrow widths switch between panels because there is only room for one.
+   A column beside the table has room for all four, so the switcher retires and
+   the sections stack — the same components, a different container. */
+@media (min-width: 1000px) {
+  .rail__tabs {
+    display: none;
+  }
+
+  .rail__body {
+    max-height: min(70vh, 720px);
+  }
+
+  .rail__section,
+  .rail__section[data-active="true"] {
+    display: block;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .rail__section:last-child {
+    border-bottom: none;
+  }
+}
+
+@media (max-width: 999px) {
+  .rail__title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 
 .rail__heading {

@@ -83,10 +83,13 @@ export function Seat({
             ) : null}
           </span>
 
-          <span className="seat__cards">
+          <span
+            className="seat__cards"
+            aria-label={isViewer ? "Your hole cards" : `${player.displayName} shown cards`}
+          >
             {isViewer && viewerHoleCards && viewerHoleCards.length > 0 ? (
               viewerHoleCards.map((card, index) => (
-                <PlayingCard card={card} dealIndex={index} key={`${card.rank}-${card.suit}`} size="md" />
+                <PlayingCard card={card} dealIndex={index} key={`${card.rank}-${card.suit}`} size="lg" />
               ))
             ) : player.visibleHoleCards.length > 0 ? (
               player.visibleHoleCards.map((card, index) => (
@@ -94,8 +97,8 @@ export function Seat({
               ))
             ) : player.hasCards ? (
               <>
-                <CardBack />
-                <CardBack />
+                <CardBack size="xs" />
+                <CardBack size="xs" />
               </>
             ) : null}
           </span>

@@ -5,6 +5,6 @@ export declare function PlayingCard({ card, size, dealIndex }: {
     dealIndex?: number;
 }): import("react/jsx-runtime").JSX.Element;
 export declare function CardBack({ size }: {
-    size?: "sm" | "md" | "lg";
+    size?: "xs" | "sm" | "md" | "lg";
 }): import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=PlayingCard.d.ts.map
