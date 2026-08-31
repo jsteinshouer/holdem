@@ -7,7 +7,7 @@ import { PlayingCard } from "./PlayingCard";
 import { Seat } from "./Seat";
 import { ActionBar } from "./ActionBar";
 import { RaiseSheet } from "./RaiseSheet";
-import { Rail, type RailTab } from "./Rail";
+import { Rail, TAB_LABELS, type RailTab } from "./Rail";
 import { TutorialDialog } from "./TutorialDialog";
 import { seatAngles } from "./seatRing";
 
@@ -35,6 +35,9 @@ export function TableRoom({
   const [chatDraft, setChatDraft] = useState("");
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [openTutorial, setOpenTutorial] = useState<"beginner" | "host" | null>(null);
+  const [isRailOpen, setIsRailOpen] = useState(false);
+  const stationRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
   const previousChatCountRef = useRef(snapshot.chatMessages.length);
   const wasViewerTurnRef = useRef(false);
 
@@ -69,6 +72,8 @@ export function TableRoom({
     !currentActor?.isAllIn &&
     currentActorInactiveForMs >= snapshot.defaults.hostAutoFoldAfterMs;
 
+  const latestAction = snapshot.hand.actionLog.at(-1) ?? "The hand has not started yet.";
+
   const handName = useMemo(
     () => describeViewerHand(snapshot.hand.viewerHoleCards, snapshot.hand.board),
     [snapshot.hand.viewerHoleCards, snapshot.hand.board]
@@ -91,6 +96,37 @@ export function TableRoom({
 
     return currentActor ? `Waiting for ${currentActor.displayName} to act.` : "Waiting for the next action.";
   }, [snapshot, currentActor]);
+
+  useEffect(() => {
+    const station = stationRef.current;
+    const table = tableRef.current;
+
+    if (!station || !table || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    // Three layers pin to the bottom on a phone — board and pot, your plate, your
+    // actions — so the mobile priority list survives however tall the table gets.
+    // Each needs the real height of the layer below it.
+    const viewer = table.querySelector<HTMLElement>(".seat--viewer");
+
+    const measure = () => {
+      table.style.setProperty("--station-h", `${Math.round(station.offsetHeight)}px`);
+      table.style.setProperty("--viewer-h", `${Math.round(viewer?.offsetHeight ?? 0)}px`);
+    };
+
+    const observer = new ResizeObserver(measure);
+
+    observer.observe(station);
+
+    if (viewer) {
+      observer.observe(viewer);
+    }
+
+    measure();
+
+    return () => observer.disconnect();
+  }, [viewerSeatIndex]);
 
   useEffect(() => {
     setRaiseTo(String(minimumRaiseTo));
@@ -159,8 +195,15 @@ export function TableRoom({
     setIsRaiseSheetOpen(false);
   }
 
+  function openRail(tab: RailTab) {
+    setActiveTab(tab);
+    setIsRailOpen(true);
+  }
+
+  const drawerTabs: RailTab[] = ["log", "chat", "manage"];
+
   return (
-    <div className={`table-room ${isViewerTurn ? "table-room--your-turn" : ""}`}>
+    <div className={`table-room ${isViewerTurn ? "table-room--your-turn" : ""}`} ref={tableRef}>
       <header className="table-room__head">
         <h2 id="table-summary-heading">Table {snapshot.tableId}</h2>
         <dl className="metrics" aria-label="Table status">
@@ -230,7 +273,30 @@ export function TableRoom({
           </div>
         </div>
 
-        <div className="station">
+        <div className="station" ref={stationRef}>
+          <div className="station__panels">
+            {drawerTabs.map((tab) => (
+              <button
+                aria-controls="table-rail"
+                aria-expanded={isRailOpen && activeTab === tab}
+                className="station__panel-trigger"
+                key={tab}
+                onClick={() => (isRailOpen && activeTab === tab ? setIsRailOpen(false) : openRail(tab))}
+                type="button"
+              >
+                {TAB_LABELS[tab]}
+                {tab === "chat" && unreadChatCount > 0 ? (
+                  <span className="rail__badge">{unreadChatCount}</span>
+                ) : null}
+              </button>
+            ))}
+          </div>
+
+          <p aria-live="polite" className="station__latest">
+            <span>Latest</span>
+            {latestAction}
+          </p>
+
           <ActionBar
             callAmount={snapshot.hand.callAmount}
             currentBet={snapshot.hand.currentBet}
@@ -273,14 +339,22 @@ export function TableRoom({
           canHostAutoFoldInactive={canHostAutoFoldInactive}
           chatDraft={chatDraft}
           inviteLink={inviteLink}
+          isOpen={isRailOpen}
           onChatDraftChange={setChatDraft}
+          onClose={() => setIsRailOpen(false)}
           onOpenTutorial={setOpenTutorial}
           onSubmitChat={submitChat}
-          onTabChange={setActiveTab}
           onTableCommand={onTableCommand}
           snapshot={snapshot}
-          unreadChatCount={unreadChatCount}
         />
+        {isRailOpen ? (
+          <button
+            aria-label="Close panels"
+            className="rail__scrim"
+            onClick={() => setIsRailOpen(false)}
+            type="button"
+          />
+        ) : null}
       </div>
 
       {openTutorial ? <TutorialDialog kind={openTutorial} onClose={() => setOpenTutorial(null)} /> : null}

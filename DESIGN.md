@@ -227,9 +227,11 @@ Reshaping is driven by **container queries on the table region**, not viewport m
 | Region | Wide | Narrow |
 |---|---|---|
 | Masthead | identity, connection, theme, invite | condensed bar |
-| Table field | wide ellipse; opponents arced, board and pot centered | tall ellipse; opponents arc across the top |
-| Your station | seat plate, hole cards, hand name, action bar | pinned bottom, thumb-reachable |
-| Rail | column beside the table | tab-switched bottom sheet |
+| Table field | ellipse; opponents arced, board and pot centred | grid; opponents scroll, board and pot pin |
+| Your station | latest action, action bar, host actions | pinned to the viewport foot |
+| Rail | stacked column beside the table | bottom sheet above the station |
+
+**Three pinned layers on narrow.** Measured on a 839px viewport, an untrimmed table put the action bar at 848px — the primary action below the fold. Below 1000px the surface therefore pins, from the bottom up: the **station** (latest action, action bar, host actions), **your own seat plate**, and the **board and pot**. Opponents are the only thing that scrolls, which is the right trade — they are the part of the table read occasionally rather than on every action. Each layer's offset is computed from the measured height of the layer beneath it (`--station-h`, `--viewer-h`), so the stack survives any content height.
 
 Container max width 1180px. Spacing is a 4px base scale (4 / 8 / 12 / 16 / 24 / 32 / 48) and nothing between the steps.
 
@@ -239,7 +241,9 @@ Container max width 1180px. Spacing is a 4px base scale (4 / 8 / 12 / 16 / 24 / 
 
 **The Measured Geometry Rule.** Any layout that positions elements by computed coordinates is verified by reading back the rendered boxes at 390, 900 and 1440, not by looking at it. Zero overlaps, nothing outside its container, and no clipped money figure. A collision found by eye has already shipped once.
 
-**The One Place Rule.** A player's identity and their position are the same drawn object. There is no roster panel listing people who are already visible on the table.
+**The One Place Rule.** A player's identity and their position are the same drawn object. There is no roster panel listing people who are already visible on the table. On narrow widths this retires the Players panel outright: every seat plate already carries name, stack, bet and state, so the roster would repeat the table. Spectators — the only participants not drawn on the felt — live in Manage, beside the control that seats them.
+
+**The Never-Hidden Action Rule.** No panel, sheet or overlay may cover the action bar or the turn state. A surface whose job is telling you it is your turn may never be the thing that hides it. Panels are sheets anchored *above* the pinned station, never modals: a modal occludes the table and protects a focus that reading a log or a chat does not need.
 
 ## Elevation & Depth
 
@@ -282,7 +286,7 @@ Character: **printed and exact.** Hairline rules, tight registration, everything
 - **Disabled:** transparent, muted ink, `ink / 6%` hairline — **and it stays visible.** Illegal actions are shown disabled with a reason, never hidden. That is how a first-timer learns the rules.
 
 ### Action Bar (signature)
-The bar carrying fold / check / call / raise / all-in. Each button states its consequence on a second line in Money type: `Call $20` over `$480 left`. This is the product's central teaching device and the clearest place it beats its craft bar. Buttons hold fixed slots so they do not reorder between streets.
+The bar carrying fold / check / call / raise / all-in. It sits in the station, which pins to the viewport foot below 1000px, and is preceded by a persistent `aria-live` line naming the latest public action — following the hand is a stated mobile priority and is never buried in a panel. Each button states its consequence on a second line in Money type: `Call $20` over `$480 left`. This is the product's central teaching device and the clearest place it beats its craft bar. Buttons hold fixed slots so they do not reorder between streets.
 
 ### Seat Plate (signature)
 One component for all six seats and every state. A strict label template in fixed slot order — name, stack, bet, state — so six plates scan as aligned data rather than six small compositions. (The fourth slot is the live bet, not the last action: `SeatSnapshot` carries `currentBet` but no per-seat action history.) States: empty, seated-waiting, in-hand, folded (plate desaturates to 45% opacity), all-in (brass hairline plus an ALL IN label), sitting out, busted, disconnected (hairline goes dashed), bot (a small BOT label), and acting (turn lift plus a brass ring). Button, small blind and big blind ride as small brass discs on the plate edge.
@@ -306,7 +310,7 @@ A stack renders as circles in real denominations, tallest denomination on top, w
 - **Error:** hairline goes `state-error`, and the message sits below in Body — never as a color change alone.
 
 ### Navigation
-The rail's four sections (Log, Chat, Players, Manage) are tabs below 1000px and stacked sections above it, where a column beside the table has room for all four. Tabs are Label type, uppercase, with the active one carrying a 2px brass underline **and** `aria-pressed`. They are buttons, not an ARIA tablist: a tablist without roving tabindex and `tabpanel` roles is a worse lie than a plain button, and the roles would have to change with the breakpoint. Unread chat shows a count, not a dot.
+The rail is a stacked column above 1000px, where a column beside the table has room for every section at once, and a bottom sheet below it, opened from three triggers in the pinned station (Action log, Chat, Manage). The triggers are disclosure buttons carrying `aria-expanded` and `aria-controls`; pressing an open one closes the sheet. Tabs are Label type, uppercase, with the active one carrying a 2px brass underline **and** `aria-pressed`. They are buttons, not an ARIA tablist: a tablist without roving tabindex and `tabpanel` roles is a worse lie than a plain button, and the roles would have to change with the breakpoint. Unread chat shows a count, not a dot.
 
 ## Do's and Don'ts
 
@@ -318,6 +322,7 @@ The rail's four sections (Log, Chat, Players, Manage) are tabs below 1000px and 
 - **Do** hold cards and chips constant across themes — they are objects, not surfaces.
 - **Do** run the Grayscale Test on any screen showing player state.
 - **Do** keep the felt to 30–50% of the table view so the committed field reads as a field.
+- **Do** keep the action bar, your cards and the board reachable without scrolling on a phone.
 
 ### Don't:
 - **Don't** ship a `mobile-` twin of any component toggled by `display: none`.
@@ -327,3 +332,4 @@ The rail's four sections (Log, Chat, Players, Manage) are tabs below 1000px and 
 - **Don't** let the slab face escape card ranks and hand names.
 - **Don't** introduce a font size outside the six-step scale or a gap outside the 4px scale.
 - **Don't** render depth photographically — no beveled rails, no rendered chips, no felt texture images.
+- **Don't** put a panel over the action bar or the turn state, and don't reach for a modal where a sheet will do.

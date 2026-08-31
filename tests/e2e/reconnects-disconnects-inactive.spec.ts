@@ -32,7 +32,7 @@ test("spectator refresh restores spectator identity", async ({ browser, page }, 
   await expect(spectatorPage.getByRole("heading", { name: /Table / })).toBeVisible();
   await expect(spectatorPage.getByLabel("Your display name")).toHaveCount(0);
   await expect(spectatorPage.getByText("Watcher")).toBeVisible();
-  await expect(spectatorPage.getByLabel("Player details").getByText("watching", { exact: true })).toBeVisible();
+  await expect(spectatorPage.getByLabel("Manage table").getByText("watching", { exact: true })).toBeVisible();
 });
 
 test("disconnected current actor auto-folds after grace period", async ({ browser, page }, testInfo) => {

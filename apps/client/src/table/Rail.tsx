@@ -9,61 +9,53 @@ import type {
   TableSnapshot
 } from "@friendly-holdem/shared";
 import { formatTime, money } from "../lib/format";
-import { CopyIcon, SendIcon } from "../icons";
+import { CloseIcon, CopyIcon, SendIcon } from "../icons";
 
 export type RailTab = "log" | "chat" | "players" | "manage";
 
 // One rail, four sections. On wide screens it is a column beside the table; on
 // narrow it is a bottom sheet with the same components in a different container.
 // Nothing here has a mobile twin.
+export const TAB_LABELS: Record<RailTab, string> = {
+  log: "Action log",
+  chat: "Chat",
+  players: "Players",
+  manage: "Manage"
+};
+
 export function Rail({
   activeTab,
+  isOpen,
+  onClose,
   chatDraft,
   canHostAutoFoldInactive,
   inviteLink,
   snapshot,
-  unreadChatCount,
   onChatDraftChange,
   onOpenTutorial,
   onSubmitChat,
-  onTabChange,
   onTableCommand
 }: {
   activeTab: RailTab;
+  isOpen: boolean;
+  onClose: () => void;
   chatDraft: string;
   canHostAutoFoldInactive: boolean;
   inviteLink: string;
   snapshot: TableSnapshot;
-  unreadChatCount: number;
   onChatDraftChange: (value: string) => void;
   onOpenTutorial: (kind: "beginner" | "host") => void;
   onSubmitChat: () => void;
-  onTabChange: (tab: RailTab) => void;
   onTableCommand: <TPayload>(eventName: string, payload: TPayload, fallbackMessage: string) => void;
 }) {
-  const tabs: { id: RailTab; label: string; badge?: number }[] = [
-    { id: "log", label: "Log" },
-    { id: "chat", label: "Chat", badge: unreadChatCount },
-    { id: "players", label: "Players" },
-    { id: "manage", label: "Manage" }
-  ];
-
   return (
-    <aside className="rail" aria-label="Table panels">
-      <div className="rail__tabs">
-        {tabs.map((tab) => (
-          <button
-            aria-pressed={activeTab === tab.id}
-            className="rail__tab"
-            key={tab.id}
-            onClick={() => onTabChange(tab.id)}
-            type="button"
-          >
-            {tab.label}
-            {tab.badge ? <span className="rail__badge">{tab.badge}</span> : null}
-          </button>
-        ))}
-      </div>
+    <aside className="rail" aria-label="Table panels" data-open={isOpen} id="table-rail">
+      <header className="rail__drawer-head">
+        <h2>{TAB_LABELS[activeTab]}</h2>
+        <button aria-label="Close panels" className="icon-button" onClick={onClose} type="button">
+          <CloseIcon />
+        </button>
+      </header>
 
       <div className="rail__body">
         <section className="rail__section" data-active={activeTab === "log"} aria-label="Public action log">
@@ -81,7 +73,7 @@ export function Rail({
           />
         </section>
 
-        <section className="rail__section" data-active={activeTab === "players"} aria-label="Player details">
+        <section className="rail__section rail__section--players" data-active={activeTab === "players"} aria-label="Player details">
           <h3 className="rail__title">Players</h3>
           <PlayersPanel snapshot={snapshot} />
         </section>
@@ -182,19 +174,6 @@ function PlayersPanel({ snapshot }: { snapshot: TableSnapshot }) {
         ))}
       </ul>
 
-      <h3 className="rail__heading">Spectators</h3>
-      {snapshot.spectators.length > 0 ? (
-        <ul className="roster__list">
-          {snapshot.spectators.map((spectator) => (
-            <li key={spectator.id}>
-              <span className="roster__name">{spectator.displayName}</span>
-              <span className="roster__seat">{spectator.isConnected ? "watching" : "away"}</span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="empty">Nobody is watching.</p>
-      )}
     </div>
   );
 }
@@ -279,6 +258,20 @@ function ManagePanel({
           </button>
         ) : null}
       </div>
+
+      <h3 className="rail__heading">Spectators</h3>
+      {snapshot.spectators.length > 0 ? (
+        <ul className="roster__list">
+          {snapshot.spectators.map((spectator) => (
+            <li key={spectator.id}>
+              <span className="roster__name">{spectator.displayName}</span>
+              <span className="roster__seat">{spectator.isConnected ? "watching" : "away"}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="empty">Nobody is watching.</p>
+      )}
 
       {snapshot.isHost && snapshot.spectators.length > 0 ? (
         <>

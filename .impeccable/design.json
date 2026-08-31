@@ -365,7 +365,12 @@
       },
       {
         "name": "The One Place Rule",
-        "body": "A player's identity and their position are the same drawn object. There is no roster panel listing people who are already visible on the table.",
+        "body": "A player's identity and their position are the same drawn object. There is no roster panel listing people who are already visible on the table. On narrow widths this retires the Players panel outright; spectators, the only participants not drawn on the felt, live in Manage beside the control that seats them.",
+        "section": "layout"
+      },
+      {
+        "name": "The Never-Hidden Action Rule",
+        "body": "No panel, sheet or overlay may cover the action bar or the turn state. A surface whose job is telling you it is your turn may never be the thing that hides it. Panels are sheets anchored above the pinned station, never modals: a modal occludes the table and protects a focus that reading a log or a chat does not need.",
         "section": "layout"
       },
       {
@@ -392,7 +397,8 @@
       "Do hold cards and chips constant across themes \u2014 they are objects, not surfaces.",
       "Do run the Grayscale Test on any screen showing player state.",
       "Do keep the felt to 30\u201350% of the table view so the committed field reads as a field.",
-      "Do read back rendered geometry at 390/900/1440 before calling a coordinate-positioned layout done."
+      "Do read back rendered geometry at 390/900/1440 before calling a coordinate-positioned layout done.",
+      "Do keep the action bar, your cards and the board reachable without scrolling on a phone."
     ],
     "donts": [
       "Don't ship a mobile- twin of any component toggled by display: none.",
@@ -401,7 +407,8 @@
       "Don't borrow chip denomination colors for UI state.",
       "Don't let the slab face escape card ranks and hand names.",
       "Don't introduce a font size outside the six-step scale or a gap outside the 4px scale.",
-      "Don't render depth photographically \u2014 no beveled rails, no rendered chips, no felt texture images."
+      "Don't render depth photographically \u2014 no beveled rails, no rendered chips, no felt texture images.",
+      "Don't put a panel over the action bar or the turn state, and don't reach for a modal where a sheet will do."
     ]
   }
 }

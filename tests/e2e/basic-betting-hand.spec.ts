@@ -55,8 +55,8 @@ test("mobile layout keeps current player actions usable", async ({ browser, page
   await joinExistingPage(mobilePage, inviteLink, "Grace");
   await mobilePage.getByRole("button", { name: "Chat" }).click();
   await expect(mobilePage.getByLabel("Table chat")).toBeVisible();
-  await mobilePage.getByRole("button", { name: "Players" }).click();
-  await expect(mobilePage.getByLabel("Player details")).toContainText("Grace");
+  await expect(mobilePage.getByLabel("Seated players")).toContainText("Grace");
+  await expect(mobilePage.getByRole("button", { name: "Players" })).toHaveCount(0);
   await mobilePage.getByRole("button", { name: "Manage" }).click();
   await expect(mobilePage.getByLabel("Invite link", { exact: true })).toBeVisible();
   await mobilePage.getByRole("button", { name: "Log" }).click();
