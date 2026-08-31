@@ -1,0 +1,350 @@
+import type {
+  AddBotPayload,
+  ApproveRebuyPayload,
+  HostAutoFoldInactivePayload,
+  RejoinPayload,
+  RemovePlayerPayload,
+  SeatSpectatorPayload,
+  SitOutPayload,
+  TableSnapshot
+} from "@friendly-holdem/shared";
+import { formatTime, money } from "../lib/format";
+import { CloseIcon, CopyIcon, SendIcon } from "../icons";
+
+export type RailTab = "log" | "chat" | "players" | "manage";
+
+// One rail, four sections. On wide screens it is a column beside the table; on
+// narrow it is a bottom sheet with the same components in a different container.
+// Nothing here has a mobile twin.
+export const TAB_LABELS: Record<RailTab, string> = {
+  log: "Action log",
+  chat: "Chat",
+  players: "Players",
+  manage: "Manage"
+};
+
+export function Rail({
+  activeTab,
+  isOpen,
+  onClose,
+  chatDraft,
+  canHostAutoFoldInactive,
+  inviteLink,
+  snapshot,
+  onChatDraftChange,
+  onOpenTutorial,
+  onSubmitChat,
+  onTableCommand
+}: {
+  activeTab: RailTab;
+  isOpen: boolean;
+  onClose: () => void;
+  chatDraft: string;
+  canHostAutoFoldInactive: boolean;
+  inviteLink: string;
+  snapshot: TableSnapshot;
+  onChatDraftChange: (value: string) => void;
+  onOpenTutorial: (kind: "beginner" | "host") => void;
+  onSubmitChat: () => void;
+  onTableCommand: <TPayload>(eventName: string, payload: TPayload, fallbackMessage: string) => void;
+}) {
+  return (
+    <aside className="rail" aria-label="Table panels" data-open={isOpen} id="table-rail">
+      <header className="rail__drawer-head">
+        <h2>{TAB_LABELS[activeTab]}</h2>
+        <button aria-label="Close panels" className="icon-button" onClick={onClose} type="button">
+          <CloseIcon />
+        </button>
+      </header>
+
+      <div className="rail__body">
+        <section className="rail__section" data-active={activeTab === "log"} aria-label="Public action log">
+          <h3 className="rail__title">Action log</h3>
+          <ActionLog entries={snapshot.hand.actionLog} />
+        </section>
+
+        <section className="rail__section" data-active={activeTab === "chat"} aria-label="Table chat">
+          <h3 className="rail__title">Chat</h3>
+          <ChatPanel
+            chatDraft={chatDraft}
+            messages={snapshot.chatMessages}
+            onChatDraftChange={onChatDraftChange}
+            onSubmitChat={onSubmitChat}
+          />
+        </section>
+
+        <section className="rail__section rail__section--players" data-active={activeTab === "players"} aria-label="Player details">
+          <h3 className="rail__title">Players</h3>
+          <PlayersPanel snapshot={snapshot} />
+        </section>
+
+        <section className="rail__section" data-active={activeTab === "manage"} aria-label="Manage table">
+          <h3 className="rail__title">Manage</h3>
+          <ManagePanel
+            canHostAutoFoldInactive={canHostAutoFoldInactive}
+            inviteLink={inviteLink}
+            snapshot={snapshot}
+            onOpenTutorial={onOpenTutorial}
+                onTableCommand={onTableCommand}
+          />
+        </section>
+      </div>
+    </aside>
+  );
+}
+
+function ActionLog({ entries }: { entries: string[] }) {
+  return entries.length > 0 ? (
+    <ol className="log">
+      {[...entries].reverse().map((entry, index) => (
+        <li key={`${entry}-${index}`}>{entry}</li>
+      ))}
+    </ol>
+  ) : (
+    <p className="empty">Nothing has happened yet. The log fills in as the hand plays.</p>
+  );
+}
+
+function ChatPanel({
+  chatDraft,
+  messages,
+  onChatDraftChange,
+  onSubmitChat
+}: {
+  chatDraft: string;
+  messages: TableSnapshot["chatMessages"];
+  onChatDraftChange: (value: string) => void;
+  onSubmitChat: () => void;
+}) {
+  return (
+    <div className="chat">
+      <ol className="chat__messages">
+        {messages.length > 0 ? (
+          messages.map((message) => (
+            <li key={message.id}>
+              <span className="chat__meta">
+                <strong>{message.displayName}</strong>
+                <time>{formatTime(message.sentAt)}</time>
+              </span>
+              <p>{message.body}</p>
+            </li>
+          ))
+        ) : (
+          <li className="empty">No messages yet. Say hello.</li>
+        )}
+      </ol>
+      <form
+        className="chat__form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmitChat();
+        }}
+      >
+        <label className="visually-hidden" htmlFor="chat-message">
+          Message
+        </label>
+        <textarea
+          id="chat-message"
+          maxLength={180}
+          placeholder="Message the table"
+          rows={1}
+          value={chatDraft}
+          onChange={(event) => onChatDraftChange(event.target.value)}
+        />
+        <button aria-label="Send" className="icon-button icon-button--filled" disabled={!chatDraft.trim()} type="submit">
+          <SendIcon />
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function PlayersPanel({ snapshot }: { snapshot: TableSnapshot }) {
+  const seated = snapshot.seats.filter((seat) => seat.player);
+
+  return (
+    <div className="roster">
+      <ul className="roster__list">
+        {seated.map((seat) => (
+          <li key={seat.seatNumber}>
+            <span className="roster__name">{seat.player?.displayName}</span>
+            <span className="roster__seat">Seat {seat.seatNumber + 1}</span>
+            <span className="roster__stack">{money(seat.player?.stack ?? 0)}</span>
+          </li>
+        ))}
+      </ul>
+
+    </div>
+  );
+}
+
+function ManagePanel({
+  canHostAutoFoldInactive,
+  inviteLink,
+  snapshot,
+  onOpenTutorial,
+  onTableCommand
+}: {
+  canHostAutoFoldInactive: boolean;
+  inviteLink: string;
+  snapshot: TableSnapshot;
+  onOpenTutorial: (kind: "beginner" | "host") => void;
+  onTableCommand: <TPayload>(eventName: string, payload: TPayload, fallbackMessage: string) => void;
+}) {
+  const others = snapshot.seats
+    .map((seat) => seat.player)
+    .filter((player): player is NonNullable<typeof player> => Boolean(player))
+    .filter((player) => !player.isHost);
+  const betweenHands = snapshot.hand.phase === "settled" || snapshot.hand.phase === "waiting";
+
+  return (
+    <div className="manage">
+      <div className="invite">
+        <label htmlFor="invite-link">Invite link</label>
+        <div className="invite__row">
+          <input id="invite-link" readOnly value={inviteLink} onFocus={(event) => event.target.select()} />
+          <button
+            aria-label="Copy invite link"
+            className="icon-button"
+            onClick={() => navigator.clipboard?.writeText(inviteLink).catch(() => undefined)}
+            type="button"
+          >
+            <CopyIcon />
+          </button>
+        </div>
+      </div>
+
+      <div className="button-row">
+        <button
+          disabled={!snapshot.availableControls.canSitOut}
+          onClick={() =>
+            onTableCommand<SitOutPayload>("player:sitOut", { tableId: snapshot.tableId }, "Unable to sit out.")
+          }
+          type="button"
+        >
+          Sit out
+        </button>
+        <button
+          disabled={!snapshot.availableControls.canRejoin}
+          onClick={() =>
+            onTableCommand<RejoinPayload>("player:rejoin", { tableId: snapshot.tableId }, "Unable to rejoin.")
+          }
+          type="button"
+        >
+          Rejoin
+        </button>
+        <button
+          disabled={!canHostAutoFoldInactive}
+          onClick={() =>
+            onTableCommand<HostAutoFoldInactivePayload>(
+              "host:autoFoldInactive",
+              { tableId: snapshot.tableId },
+              "Unable to auto-fold inactive player."
+            )
+          }
+          type="button"
+        >
+          Auto-fold inactive
+        </button>
+        {snapshot.isHost ? (
+          <button
+            disabled={!snapshot.availableControls.canAddBot}
+            onClick={() =>
+              onTableCommand<AddBotPayload>("host:addBot", { tableId: snapshot.tableId }, "Unable to add bot.")
+            }
+            type="button"
+          >
+            Add bot
+          </button>
+        ) : null}
+      </div>
+
+      <h3 className="rail__heading">Spectators</h3>
+      {snapshot.spectators.length > 0 ? (
+        <ul className="roster__list">
+          {snapshot.spectators.map((spectator) => (
+            <li key={spectator.id}>
+              <span className="roster__name">{spectator.displayName}</span>
+              <span className="roster__seat">{spectator.isConnected ? "watching" : "away"}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="empty">Nobody is watching.</p>
+      )}
+
+      {snapshot.isHost && snapshot.spectators.length > 0 ? (
+        <>
+          <h3 className="rail__heading">Seat a spectator</h3>
+          <div className="button-row">
+            {snapshot.spectators.map((spectator) => (
+              <button
+                disabled={!snapshot.availableControls.canSeatSpectators}
+                key={spectator.id}
+                onClick={() =>
+                  onTableCommand<SeatSpectatorPayload>(
+                    "host:seatSpectator",
+                    { tableId: snapshot.tableId, participantId: spectator.id },
+                    "Unable to seat spectator."
+                  )
+                }
+                type="button"
+              >
+                Seat {spectator.displayName}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
+
+      {snapshot.isHost && others.length > 0 ? (
+        <>
+          <h3 className="rail__heading">Players</h3>
+          <ul className="host-list">
+            {others.map((player) => (
+              <li key={player.id}>
+                <span>{player.displayName}</span>
+                <button
+                  disabled={!betweenHands}
+                  onClick={() =>
+                    onTableCommand<ApproveRebuyPayload>(
+                      "host:approveRebuy",
+                      { tableId: snapshot.tableId, participantId: player.id },
+                      "Unable to approve rebuy."
+                    )
+                  }
+                  type="button"
+                >
+                  Rebuy
+                </button>
+                <button
+                  disabled={player.isConnected || !betweenHands}
+                  onClick={() =>
+                    onTableCommand<RemovePlayerPayload>(
+                      "host:removePlayer",
+                      { tableId: snapshot.tableId, participantId: player.id },
+                      "Unable to remove player."
+                    )
+                  }
+                  type="button"
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
+      <h3 className="rail__heading">Help</h3>
+      <div className="button-row">
+        <button onClick={() => onOpenTutorial("beginner")} type="button">
+          Beginner tutorial
+        </button>
+        <button onClick={() => onOpenTutorial("host")} type="button">
+          Host tutorial
+        </button>
+      </div>
+    </div>
+  );
+}

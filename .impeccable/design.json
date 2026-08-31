@@ -1,0 +1,414 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-29T00:00:00Z",
+  "title": "Design System: Friendly Hold'em",
+  "extensions": {
+    "colorMeta": {
+      "felt-600": {
+        "role": "primary",
+        "displayName": "Broadcloth Green",
+        "canonical": "#16694C",
+        "tonalRamp": [
+          "#04180F",
+          "#0A2A1D",
+          "#0F3F2C",
+          "#14563B",
+          "#16694C",
+          "#1C8160",
+          "#4EA383",
+          "#7FBFA5"
+        ]
+      },
+      "brass-500": {
+        "role": "secondary",
+        "displayName": "Rail Brass",
+        "canonical": "#C4952F",
+        "tonalRamp": [
+          "#231A05",
+          "#3D2E0C",
+          "#573F13",
+          "#71531A",
+          "#8A6420",
+          "#C4952F",
+          "#D9AF57",
+          "#EBD292"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Card Paper",
+        "canonical": "#FBF7EE",
+        "tonalRamp": [
+          "#2A261D",
+          "#4A4437",
+          "#6B6353",
+          "#8D8471",
+          "#AFA694",
+          "#D1C9B8",
+          "#E3DCCB",
+          "#FBF7EE"
+        ]
+      },
+      "room-light": {
+        "role": "neutral",
+        "displayName": "Warm Plaster",
+        "canonical": "#F2EEE6",
+        "tonalRamp": [
+          "#1B1913",
+          "#333026",
+          "#4D493C",
+          "#6B6759",
+          "#8E8A7B",
+          "#B4B0A1",
+          "#D6D2C6",
+          "#F2EEE6"
+        ]
+      },
+      "room-dark": {
+        "role": "neutral",
+        "displayName": "Room At Night",
+        "canonical": "#0F1412",
+        "tonalRamp": [
+          "#0F1412",
+          "#161C19",
+          "#202824",
+          "#2E3833",
+          "#455049",
+          "#657069",
+          "#8F9992",
+          "#C4CCC7"
+        ]
+      },
+      "chip-5": {
+        "role": "tertiary",
+        "displayName": "Five Red",
+        "canonical": "#C0392F",
+        "tonalRamp": [
+          "#2A0C09",
+          "#480F0C",
+          "#661812",
+          "#8D241B",
+          "#C0392F",
+          "#D4675E",
+          "#E4948D",
+          "#F3C7C3"
+        ]
+      },
+      "chip-25": {
+        "role": "tertiary",
+        "displayName": "Twenty-Five Green",
+        "canonical": "#1E7A4D",
+        "tonalRamp": [
+          "#04180E",
+          "#092919",
+          "#0F3F27",
+          "#155A36",
+          "#1E7A4D",
+          "#2F9E68",
+          "#63BF92",
+          "#9EDBBC"
+        ]
+      },
+      "chip-100": {
+        "role": "tertiary",
+        "displayName": "Hundred Black",
+        "canonical": "#202426",
+        "tonalRamp": [
+          "#0B0D0E",
+          "#141718",
+          "#202426",
+          "#333A3D",
+          "#4C5559",
+          "#6E797E",
+          "#98A2A7",
+          "#C6CDD0"
+        ]
+      },
+      "chip-500": {
+        "role": "tertiary",
+        "displayName": "Five Hundred Purple",
+        "canonical": "#6B3FA0",
+        "tonalRamp": [
+          "#160B21",
+          "#241239",
+          "#361B52",
+          "#4C2A74",
+          "#6B3FA0",
+          "#8B60BE",
+          "#AF8CD6",
+          "#D2BCE9"
+        ]
+      },
+      "card-suit-red": {
+        "role": "neutral",
+        "displayName": "Suit Red",
+        "canonical": "#B4262B",
+        "tonalRamp": [
+          "#280709",
+          "#440B10",
+          "#611217",
+          "#8A1B21",
+          "#B4262B",
+          "#CE5A5D",
+          "#E1908F",
+          "#F2C6C4"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Pot readout and the hand result at showdown. Slab."
+      },
+      "money": {
+        "displayName": "Money",
+        "purpose": "Every currency figure. Always tabular-nums so digits never jitter."
+      },
+      "rank": {
+        "displayName": "Rank",
+        "purpose": "Playing card corner ranks and pips. Slab. Never on interface chrome."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Uppercase metric captions: POT, TO CALL, STACK, BLINDS."
+      }
+    },
+    "shadows": [
+      {
+        "name": "turn-lift",
+        "value": "0 0 0 2px #C4952F, 0 4px 12px rgb(0 0 0 / 18%)",
+        "purpose": "The acting seat. The only persistent shadow in the system; it moves as the action moves."
+      },
+      {
+        "name": "sheet-lift",
+        "value": "0 -8px 24px rgb(0 0 0 / 22%)",
+        "purpose": "The narrow-width rail sheet raised over the table."
+      },
+      {
+        "name": "none-at-rest",
+        "value": "none",
+        "purpose": "Every other element, always. Depth at rest comes from tonal layering and hairlines."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-standard",
+        "value": "cubic-bezier(0.2, 0, 0, 1)",
+        "purpose": "Default easing for state transitions."
+      },
+      {
+        "name": "deal-stagger",
+        "value": "60ms",
+        "purpose": "Delay between consecutive cards during a deal, in dealing order."
+      },
+      {
+        "name": "chip-travel",
+        "value": "260ms",
+        "purpose": "Chips moving from a seat to the pot on a bet."
+      },
+      {
+        "name": "theme-fade",
+        "value": "250ms",
+        "purpose": "Page-level palette change. Scoped to the shell only, never to gameplay state."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "prefers-reduced-motion: reduce",
+        "purpose": "All deal, travel and flip motion collapses to an instant state change. Never gates the action bar becoming usable."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "table-narrow",
+        "value": "@container (max-width: 560px)"
+      },
+      {
+        "name": "table-wide",
+        "value": "@container (min-width: 900px)"
+      },
+      {
+        "name": "shell-max",
+        "value": "1180px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The turn-advancing action. Brass fill, one per region.",
+      "html": "<button class=\"ds-btn-primary\">Call $20<small>$480 left</small></button>",
+      "css": ".ds-btn-primary { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; min-height: 44px; padding: 8px 20px; border: none; border-radius: 6px; background: #C4952F; color: #16181A; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; font-size: 1.125rem; font-weight: 600; line-height: 1.3; cursor: pointer; } .ds-btn-primary small { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; font-variant-numeric: tabular-nums; opacity: 0.72; } .ds-btn-primary:hover { background: #D9AF57; } .ds-btn-primary:focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Every non-primary control. Hairline only, no fill.",
+      "html": "<button class=\"ds-btn-secondary\">Fold</button>",
+      "css": ".ds-btn-secondary { min-height: 44px; padding: 12px 20px; border: 1px solid rgb(22 26 24 / 20%); border-radius: 6px; background: transparent; color: #161A18; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; font-size: 1.125rem; font-weight: 600; cursor: pointer; } .ds-btn-secondary:hover { border-color: rgb(22 26 24 / 40%); } .ds-btn-secondary:focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }"
+    },
+    {
+      "name": "Disabled Action",
+      "kind": "button",
+      "refersTo": "button-disabled",
+      "description": "An illegal action. Stays visible with its reason so a first-timer learns the rule.",
+      "html": "<button class=\"ds-btn-disabled\" disabled>Check<small>a bet is live</small></button>",
+      "css": ".ds-btn-disabled { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; min-height: 44px; padding: 8px 20px; border: 1px solid rgb(22 26 24 / 6%); border-radius: 6px; background: transparent; color: #5A6360; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; font-size: 1.125rem; font-weight: 600; cursor: not-allowed; } .ds-btn-disabled small { font-size: 0.75rem; letter-spacing: 0.06em; opacity: 0.85; }"
+    },
+    {
+      "name": "Playing Card",
+      "kind": "custom",
+      "refersTo": "playing-card",
+      "description": "The system's fixed silhouette. Theme-invariant, flat, one hairline.",
+      "html": "<div class=\"ds-card\"><span class=\"ds-card-corner ds-card-corner--tl\"><strong>A</strong><span>&#9824;</span></span><span class=\"ds-card-corner ds-card-corner--br\"><strong>A</strong><span>&#9824;</span></span></div>",
+      "css": ".ds-card { position: relative; width: 92px; height: 128px; border: 1px solid #E3DCCB; border-radius: 6px; background: #FBF7EE; color: #16181A; } .ds-card-corner { position: absolute; display: grid; justify-items: center; font-family: Bitter, Rockwell, 'Roboto Slab', Georgia, serif; font-weight: 700; font-size: 1.125rem; line-height: 0.9; } .ds-card-corner--tl { top: 8px; left: 8px; } .ds-card-corner--br { right: 8px; bottom: 8px; transform: rotate(180deg); }"
+    },
+    {
+      "name": "Seat Plate",
+      "kind": "card",
+      "refersTo": "seat-plate",
+      "description": "One component for all six seats and every state. Strict slot order: name, stack, state, last action.",
+      "html": "<div class=\"ds-seat\"><span class=\"ds-seat-name\">Grace</span><span class=\"ds-seat-stack\">$480</span><span class=\"ds-seat-last\">raised to $60</span></div>",
+      "css": ".ds-seat { display: grid; gap: 2px; padding: 8px 12px; border: 1px solid rgb(22 26 24 / 14%); border-radius: 10px; background: #FBF9F4; color: #161A18; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-seat-name { font-size: 1.125rem; font-weight: 600; } .ds-seat-stack { font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; } .ds-seat-last { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5A6360; }"
+    },
+    {
+      "name": "Seat Plate \u2014 Acting",
+      "kind": "card",
+      "refersTo": "seat-plate-acting",
+      "description": "The turn. The only persistent shadow in the interface, paired with a brass ring so it survives grayscale.",
+      "html": "<div class=\"ds-seat-acting\"><span class=\"ds-seat-name\">You</span><span class=\"ds-seat-stack\">$500</span><span class=\"ds-seat-last\">to act</span></div>",
+      "css": ".ds-seat-acting { display: grid; gap: 2px; padding: 8px 12px; border: 1px solid rgb(22 26 24 / 14%); border-radius: 10px; background: #FBF9F4; color: #161A18; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; box-shadow: 0 0 0 2px #C4952F, 0 4px 12px rgb(0 0 0 / 18%); } .ds-seat-acting .ds-seat-name { font-size: 1.125rem; font-weight: 600; } .ds-seat-acting .ds-seat-stack { font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; } .ds-seat-acting .ds-seat-last { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #8A6420; }"
+    },
+    {
+      "name": "Chip Stack",
+      "kind": "custom",
+      "description": "Denomination as encoding. Flat fill, hairline, dashed inner ring for edge spots.",
+      "html": "<span class=\"ds-chips\"><i class=\"ds-chip ds-chip--100\"></i><i class=\"ds-chip ds-chip--25\"></i><i class=\"ds-chip ds-chip--5\"></i><b>$130</b></span>",
+      "css": ".ds-chips { display: inline-flex; align-items: center; gap: 4px; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-chip { width: 20px; height: 20px; border-radius: 999px; display: inline-block; position: relative; } .ds-chip::after { content: ''; position: absolute; inset: 3px; border: 1px dashed rgb(255 255 255 / 55%); border-radius: 999px; } .ds-chip--100 { background: #202426; border: 1px solid rgb(0 0 0 / 40%); } .ds-chip--25 { background: #1E7A4D; border: 1px solid rgb(0 0 0 / 25%); } .ds-chip--5 { background: #C0392F; border: 1px solid rgb(0 0 0 / 25%); } .ds-chips b { font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; color: #161A18; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input-text",
+      "description": "Display name, chat, raise amount. Hairline does not move on focus.",
+      "html": "<input class=\"ds-input\" value=\"Grace\" aria-label=\"Display name\" />",
+      "css": ".ds-input { min-height: 44px; padding: 10px 12px; border: 1px solid rgb(22 26 24 / 20%); border-radius: 6px; background: #FBF9F4; color: #161A18; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; font-size: 1rem; } .ds-input:focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }"
+    },
+    {
+      "name": "Rail Tab",
+      "kind": "nav",
+      "description": "Log / Chat / Players / Manage below 1000px; the sections stack above it. Plain buttons with aria-pressed, not an ARIA tablist, because the pattern lacks roving tabindex and tabpanel roles.",
+      "html": "<div class=\"ds-tabs\"><button class=\"ds-tab\" aria-pressed=\"true\">Log</button><button class=\"ds-tab\" aria-pressed=\"false\">Chat 2</button><button class=\"ds-tab\" aria-pressed=\"false\">Players</button></div>",
+      "css": ".ds-tabs { display: flex; gap: 4px; } .ds-tab { min-height: 44px; padding: 12px 16px; border: none; border-bottom: 2px solid transparent; background: transparent; color: #5A6360; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; } .ds-tab[aria-pressed='true'] { color: #161A18; border-bottom-color: #C4952F; } .ds-tab:focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }"
+    },
+    {
+      "name": "Metric",
+      "kind": "custom",
+      "description": "POT / TO CALL / STACK readouts. Label caption over tabular money.",
+      "html": "<div class=\"ds-metric\"><span>Pot</span><strong>$1,240</strong></div>",
+      "css": ".ds-metric { display: grid; gap: 2px; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-metric span { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5A6360; } .ds-metric strong { font-family: Bitter, Rockwell, 'Roboto Slab', Georgia, serif; font-size: 2rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; color: #161A18; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The House Rules Card",
+    "overview": "Every card room props a laminated rules card on the table. It is quiet, exact, and unglamorous, and its entire job is to tell a stranger precisely what is legal right now. That card is what this product is: a table where someone who has never played can sit down mid-game and act correctly, because the surface states the rules rather than assuming them. The world is the card-room canon played straight \u2014 broadcloth green, brass, paper cards \u2014 and it is printed flat. There is no light source in this system. The card room is delivered as a graphic system: flat inks, exact registration, hairline rules. Color follows a committed strategy: one saturated field, the felt, owns the table region outright, and everything else is neutral room, paper, or brass. The room around the table changes between themes; the felt and the cards barely move.",
+    "keyCharacteristics": [
+      "Flat at rest \u2014 shadow is a state signal, never decoration",
+      "One saturated field (the felt), everything else neutral",
+      "Cards and chips are theme-invariant physical objects",
+      "Money is always tabular; digits never jitter",
+      "Every state readable in grayscale",
+      "Density serves scanning; chrome recedes and data leads"
+    ],
+    "rules": [
+      {
+        "name": "The Object Constancy Rule",
+        "body": "Cards and chips are physical objects and do not change with the theme. Card paper, card ink, suit red, and every chip denomination hold the same value in light and dark. Only the room around them flips. A card that inverts is not a card.",
+        "section": "colors"
+      },
+      {
+        "name": "The Brass Scarcity Rule",
+        "body": "Brass marks authority or turn and nothing else \u2014 dealer button, the acting seat, the primary action. If more than one brass element is visible per region, one of them is decoration and must be removed.",
+        "section": "colors"
+      },
+      {
+        "name": "The Chip Encoding Rule",
+        "body": "Chip colors mean denominations. Never reuse chip-5 red for an error, chip-25 green for success, or chip-100 black for text. State colors are separate tokens for exactly this reason.",
+        "section": "colors"
+      },
+      {
+        "name": "The Brass Contrast Ceiling",
+        "body": "Brass on felt reaches roughly 3.1:1 \u2014 adequate for large text, icons and UI boundaries, never for body copy. Body text on felt is paper, which clears 6:1.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Money Rule",
+        "body": "Every figure that can change \u2014 stack, pot, current bet, to-call, raise amount \u2014 sets font-variant-numeric: tabular-nums. A stack that shifts width when it drops from $1,000 to $995 makes the table feel unstable during the exact moment a player is deciding.",
+        "section": "typography"
+      },
+      {
+        "name": "The Two Voices Rule",
+        "body": "The slab appears on card ranks and hand names. Nothing else. The moment it reaches a button or a panel heading, the distinction between object and interface collapses and the system reads as a generic themed app.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Tree Rule",
+        "body": "No element exists twice to serve two screen sizes. A component that has a mobile- twin toggled by display: none is a defect, not an adaptation. Where wide and narrow genuinely differ, the same component moves to a different container.",
+        "section": "layout"
+      },
+      {
+        "name": "The Measured Geometry Rule",
+        "body": "Any layout that positions elements by computed coordinates is verified by reading back the rendered boxes at 390, 900 and 1440, not by looking at it. Zero overlaps, nothing outside its container, and no clipped money figure. A collision found by eye has already shipped once.",
+        "section": "layout"
+      },
+      {
+        "name": "The One Place Rule",
+        "body": "A player's identity and their position are the same drawn object. There is no roster panel listing people who are already visible on the table. On narrow widths this retires the Players panel outright; spectators, the only participants not drawn on the felt, live in Manage beside the control that seats them.",
+        "section": "layout"
+      },
+      {
+        "name": "The Never-Hidden Action Rule",
+        "body": "No panel, sheet or overlay may cover the action bar or the turn state. A surface whose job is telling you it is your turn may never be the thing that hides it. Panels are sheets anchored above the pinned station, never modals: a modal occludes the table and protects a focus that reading a log or a chat does not need.",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat-At-Rest Rule",
+        "body": "If an element has a shadow while nothing is happening to it, delete the shadow. Gradients standing in for light are the same violation.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Grayscale Test",
+        "body": "Desaturate any screen. Whose turn it is, who has folded, who is all-in, and which actions are legal must all still be readable. This is a hard requirement from PRODUCT.md, not a preference.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Printed Edge Rule",
+        "body": "Every boundary is a 1px hairline or a flat fill. No bevels, no inner glows, no double borders, no gradient edges. If a boundary needs more emphasis, change its tone, not its dimensionality.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "Do set tabular-nums on every figure that can change.",
+      "Do keep illegal actions visible and disabled with a stated reason.",
+      "Do state the consequence on action buttons (Call $20 / $480 left).",
+      "Do drive responsive behavior from container queries on the table region.",
+      "Do hold cards and chips constant across themes \u2014 they are objects, not surfaces.",
+      "Do run the Grayscale Test on any screen showing player state.",
+      "Do keep the felt to 30\u201350% of the table view so the committed field reads as a field.",
+      "Do read back rendered geometry at 390/900/1440 before calling a coordinate-positioned layout done.",
+      "Do keep the action bar, your cards and the board reachable without scrolling on a phone."
+    ],
+    "donts": [
+      "Don't ship a mobile- twin of any component toggled by display: none.",
+      "Don't add a shadow or gradient to anything at rest.",
+      "Don't use brass for general emphasis \u2014 only authority and turn.",
+      "Don't borrow chip denomination colors for UI state.",
+      "Don't let the slab face escape card ranks and hand names.",
+      "Don't introduce a font size outside the six-step scale or a gap outside the 4px scale.",
+      "Don't render depth photographically \u2014 no beveled rails, no rendered chips, no felt texture images.",
+      "Don't put a panel over the action bar or the turn state, and don't reach for a modal where a sheet will do."
+    ]
+  }
+}

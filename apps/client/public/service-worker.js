@@ -7,7 +7,8 @@ const APP_SHELL_URLS = [
   "/icons/friendly-holdem-icon-512.png",
   "/icons/friendly-holdem-maskable-512.png",
   "/screenshots/table-wide.png",
-  "/screenshots/table-mobile.png"
+  "/screenshots/table-mobile.png",
+  "/fonts/bitter-latin.woff2"
 ];
 const STATIC_DESTINATIONS = new Set(["font", "image", "manifest", "script", "style"]);
 

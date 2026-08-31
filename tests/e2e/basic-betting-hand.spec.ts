@@ -55,15 +55,15 @@ test("mobile layout keeps current player actions usable", async ({ browser, page
   await joinExistingPage(mobilePage, inviteLink, "Grace");
   await mobilePage.getByRole("button", { name: "Chat" }).click();
   await expect(mobilePage.getByLabel("Table chat")).toBeVisible();
-  await mobilePage.getByRole("button", { name: "Players" }).click();
-  await expect(mobilePage.getByLabel("Player details")).toContainText("Grace");
+  await expect(mobilePage.getByLabel("Seated players")).toContainText("Grace");
+  await expect(mobilePage.getByRole("button", { name: "Players" })).toHaveCount(0);
   await mobilePage.getByRole("button", { name: "Manage" }).click();
-  await expect(mobilePage.getByLabel("Invite and tutorials")).toBeVisible();
+  await expect(mobilePage.getByLabel("Invite link", { exact: true })).toBeVisible();
   await mobilePage.getByRole("button", { name: "Log" }).click();
   await clickRoomButton(page, "Start hand");
 
-  await expect(mobilePage.getByLabel("Hand console status")).toContainText("Preflop");
-  await expect(mobilePage.getByLabel("Compact seated players")).toContainText("Grace");
+  await expect(mobilePage.getByRole("heading", { name: "Preflop" })).toBeVisible();
+  await expect(mobilePage.getByLabel("Seated players")).toContainText("Grace");
   await expect(mobilePage.getByLabel("Community cards")).toBeVisible();
   await expect(mobilePage.getByLabel("Your hole cards")).toBeVisible();
 
@@ -74,7 +74,7 @@ test("mobile layout keeps current player actions usable", async ({ browser, page
   await mobilePage.getByRole("button", { name: "Raise" }).click();
   await expect(mobilePage.getByRole("dialog", { name: "Raise" })).toContainText("Min raise");
   await expect(mobilePage.getByRole("spinbutton", { name: "Exact raise to" })).toBeVisible();
-  await expect(mobilePage.getByRole("button", { name: "Confirm raise" })).toBeEnabled();
+  await expect(mobilePage.getByRole("button", { name: /^Raise to/ })).toBeEnabled();
   await mobilePage.getByRole("button", { name: "Cancel" }).click();
   await mobilePage.getByRole("button", { name: "Check" }).click();
   await expect(page.getByText("Grace checked.")).toBeVisible();
