@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- Build stage: install all deps and build every workspace package ----
-FROM node:22-slim AS build
+FROM node:22.23.4-slim AS build
 WORKDIR /app
 ENV PNPM_HOME=/pnpm
 ENV PATH="$PNPM_HOME:$PATH"
@@ -19,7 +19,7 @@ COPY . .
 RUN pnpm -r build
 
 # ---- Runtime stage: production deps + built artifacts only ----
-FROM node:22-slim AS runtime
+FROM node:22.23.4-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PNPM_HOME=/pnpm
